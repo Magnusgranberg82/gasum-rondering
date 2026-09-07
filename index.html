@@ -467,7 +467,7 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
     </div>
 
     <!-- Version + Logout -->
-    <div style="margin-top:8px;font-size:10px;color:rgba(255,255,255,.2);letter-spacing:.5px">v1.0 · Gasum Rondering</div>
+    <div style="margin-top:8px;font-size:10px;color:rgba(255,255,255,.2);letter-spacing:.5px" id="home-version-txt"></div>
     <div style="display:flex;gap:8px;justify-content:center;margin-top:4px">
       <button class="home-logout" onclick="logout()">↩ Logga ut</button>
       <button onclick="showVersionInfo()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:20px;padding:8px 16px;font-size:12px;cursor:pointer">🔄 Uppdatera app</button>
@@ -1444,6 +1444,9 @@ function showHome(){
     window._versionPollStarted=true;
     startVersionPolling();
   }
+  // Update version display
+  const vt=document.getElementById('home-version-txt');
+  if(vt) vt.textContent='v'+APP_SEMVER+' · Gasum Rondering';
   document.getElementById('scr-login').classList.add('off');
   document.getElementById('scr-app').classList.add('off');
   document.getElementById('scr-home').classList.remove('off');
@@ -3158,34 +3161,57 @@ function impUsersXlsx(event){
 function parseAndImportUsers(rows){
   const preview=document.getElementById('imp-usr-preview');
   if(!rows.length){preview.innerHTML='<p style="color:var(--mut);font-size:12px">Inga rader hittades.</p>';return;}
-  // Find columns case-insensitively
-  const keys=Object.keys(rows[0]);
-  const kNamn=keys.find(k=>k.toLowerCase().includes('namn'))||'Namn';
-  const kPin=keys.find(k=>k.toLowerCase().includes('pin'))||'PIN';
-  const kRoll=keys.find(k=>k.toLowerCase().includes('roll'))||'Roll';
-  const kFac=keys.find(k=>k.toLowerCase().includes('anläggning')||k.toLowerCase().includes('facility'))||'Anläggning';
 
-  let added=0, skipped=0;
+  // Find header row (first row with "namn" in it)
+  let headerIdx=0;
+  for(let i=0;i<Math.min(rows.length,5);i++){
+    const vals=Object.values(rows[i]).map(v=>String(v||'').toLowerCase());
+    if(vals.some(v=>v.includes('namn'))) { headerIdx=i; break; }
+  }
+
+  // Re-parse with header row — use raw array approach for robustness
+  const keys=Object.keys(rows[headerIdx]);
+  const kNamn=keys.find(k=>String(k).toLowerCase().includes('namn'))||keys[0];
+  const kPin =keys.find(k=>String(k).toLowerCase().includes('pin'))||keys[1];
+  const kRoll=keys.find(k=>String(k).toLowerCase().includes('roll'))||keys[2];
+  const kFac =keys.find(k=>String(k).toLowerCase().includes('anl')||String(k).toLowerCase().includes('fac'))||keys[3];
+
+  let added=0,skipped=0;
   const results=[];
-  rows.forEach(row=>{
+
+  rows.forEach((row,idx)=>{
+    if(idx===headerIdx) return; // skip header row
     const namn=String(row[kNamn]||'').trim();
-    const pin=String(row[kPin]||'0000').trim().padStart(4,'0');
-    const roll=String(row[kRoll]||'operator').toLowerCase().includes('admin')?'admin':'operator';
+    const pin=String(row[kPin]||'1234').replace(/\D/g,'').padStart(4,'0').slice(0,4);
+    const rollRaw=String(row[kRoll]||'').toLowerCase();
+    const roll=rollRaw.includes('admin')?'admin':'operator';
     const facName=String(row[kFac]||'').trim();
-    if(!namn){skipped++;return;}
-    if(DB.users.find(u=>u.name===namn)){skipped++;results.push({namn,status:'Hoppade över (finns redan)'});return;}
-    // Find facility
-    const fac=facName?DB.facilities.find(f=>f.name.toLowerCase().includes(facName.toLowerCase())):null;
-    const newUser={id:uid(),name:namn,role:roll,pin,facilityIds:fac?[fac.id]:[]};
-    DB.users.push(newUser);
+
+    if(!namn||namn===kNamn){skipped++;return;}
+    if(DB.users.find(u=>u.name.toLowerCase()===namn.toLowerCase())){
+      skipped++;
+      results.push({namn,status:'⚠ Hoppades över (finns redan)',fac:''});
+      return;
+    }
+
+    // Find facility by name (case-insensitive partial match)
+    const fac=facName
+      ? DB.facilities.find(f=>f.name.toLowerCase().includes(facName.toLowerCase()))
+      : null;
+
+    DB.users.push({id:uid(),name:namn,role:roll,pin,facilityIds:fac?[fac.id]:[]});
     added++;
-    results.push({namn,status:'✓ Skapad',fac:fac?.name||'Ingen'});
+    results.push({namn,status:'✓ Skapad ('+roll+')',fac:fac?.name||'⚠ Anläggning ej hittad'});
   });
+
   storageSave();
-  preview.innerHTML=`<div class="card fi" style="border-color:var(--good)">
-    <div class="bc" style="color:var(--good);margin-bottom:8px">✓ ${added} användare importerade, ${skipped} hoppade över</div>
-    ${results.map(r=>`<div style="font-size:12px;padding:3px 0;border-bottom:1px solid var(--brd)">${r.status} — ${esc(r.namn)}${r.fac?' ('+esc(r.fac)+')':''}</div>`).join('')}
-  </div>`;
+  preview.innerHTML='<div class="card fi" style="border-color:var(--good)">'
+    +'<div class="bc" style="color:var(--good);margin-bottom:8px">✓ '+added+' användare importerade'+(skipped?' · '+skipped+' hoppade över':'')+' </div>'
+    +results.map(r=>'<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--brd);display:flex;justify-content:space-between">'
+      +'<span>'+r.status+' — '+esc(r.namn)+'</span>'
+      +(r.fac?'<span style="color:var(--mut);font-size:11px">'+esc(r.fac)+'</span>':'')
+      +'</div>').join('')
+    +'</div>';
 }
 
 // ── EXPORT TEMPLATES ───────────────────────────────────────────────
