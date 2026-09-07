@@ -1199,7 +1199,19 @@ const CAT_COLORS={observation:'#0891b2',åtgärd:'#16a34a',larm:'#dc2626',underh
 // ══ DATA LAYER ══════════════════════════════════════════════════════
 // Swap storageLoad/storageSave with Microsoft Graph API calls later
 const SK='ron_v7',SK_ARC='ron_v7_arc',ARC_THR=500;
-function storageLoad(){try{const d=localStorage.getItem(SK);return d?JSON.parse(d):null;}catch{return null;}}
+function storageLoad(){
+  try{
+    var d=localStorage.getItem(SK);
+    if(d) return JSON.parse(d);
+    // Migrate from newer key if user had ron_v8
+    var legacy=['ron_v8','ron_v7_1'];
+    for(var i=0;i<legacy.length;i++){
+      d=localStorage.getItem(legacy[i]);
+      if(d){ var p=JSON.parse(d); localStorage.setItem(SK,JSON.stringify(p)); return p; }
+    }
+    return null;
+  }catch{return null;}
+}
 function storageSave(){
   try{
     const data=JSON.stringify(DB);
@@ -1293,10 +1305,10 @@ function selectCountry(code){
   // Filter users for this country: admin always, operators with facilities in this country
   const fidsInCountry=DB.facilities.filter(f=>(f.country||'SE')===code).map(f=>f.id);
   const ops=DB.users.filter(u=>{
-    if(u.role==='admin')return false;
+    if(u.role==='admin') return true;
     if(u.role==='operator'){
       const ids=u.facilityIds||[];
-      return ids.some(id=>fidsInCountry.includes(id));
+      return ids.length===0||ids.some(id=>fidsInCountry.includes(id));
     }
     return false;
   });
@@ -1306,7 +1318,7 @@ function selectCountry(code){
   } else {
     el.innerHTML=ops.map(u=>`<button class="ubtn" onclick="selectUser('${u.id}')">
       <div class="uav" style="background:${uColor(u)}">${(u.name||'?').charAt(0).toUpperCase()}</div>
-      <div><div style="font-weight:600;font-size:13px">${esc(u.name)}</div>
+      <div><div style="font-weight:600;font-size:13px">${esc(u.name)}${u.role==='admin'?' <span style="font-size:9px;background:var(--acc);color:white;padding:1px 6px;border-radius:8px">ADMIN</span>':''}</div>
       <div style="font-size:10px;color:var(--mut)">${esc(facTxt(u))}</div></div>
     </button>`).join('');
   }
@@ -1534,10 +1546,12 @@ function initAppShell(){
     }
   }
   _appShellReady = true;
-  document.getElementById('ucav').textContent=(CU.name||'?').charAt(0).toUpperCase();
-  document.getElementById('ucav').style.background=uColor(CU);
-  document.getElementById('ucnm').textContent=CU.name;
-  document.getElementById('ex-op').value=CU.name||'';
+  const _ucav=document.getElementById('ucav');
+  if(_ucav){_ucav.textContent=(CU.name||'?').charAt(0).toUpperCase();_ucav.style.background=uColor(CU);}
+  const _ucnm=document.getElementById('ucnm');
+  if(_ucnm) _ucnm.textContent=CU.name;
+  const _exop=document.getElementById('ex-op');
+  if(_exop) _exop.value=CU.name||'';
   const isAdm=CU.role==='admin';
   // Desktop admin tab
   const dtAdm=document.getElementById('dt-admin');
@@ -3825,178 +3839,148 @@ renderHomeBadges=function(){
 // Generates a clean printable view in a new window
 
 function exportPDF(type){
-  let content = '';
-  const now = new Date().toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'});
+  var content = '';
+  var now = new Date().toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'});
 
   if(type==='session'){
-    // Export last completed round session
-    const sess = DB.sessions[0];
+    var sess = DB.sessions[0];
     if(!sess){ toast('Ingen genomförd rond att exportera.'); return; }
-    const f = getFac(sess.facilityId);
-    const pt = getPart(sess.facilityId, sess.partId);
-    const r = DB.rounds.find(r=>r.id===sess.roundId);
-    content = `
-      <div class="header">
-        <div class="logo">Gasum</div>
-        <div class="title">Rondering — Protokoll</div>
-      </div>
-      <table class="info-table">
-        <tr><th>Rondomgång</th><td>${esc(sess.roundName||'')}</td><th>Datum/tid</th><td>${new Date(sess.ts).toLocaleString('sv-SE')}</td></tr>
-        <tr><th>Anläggning</th><td>${esc(sess.facilityName||'')}</td><th>Operatör</th><td>${esc(sess.operator||'')}</td></tr>
-        <tr><th>Anläggningsdel</th><td>${esc(sess.partName||'Hela anläggningen')}</td><th>Utskriven</th><td>${now}</td></tr>
-      </table>
-      <table class="data-table">
-        <thead><tr><th>#</th><th>Pos-ID</th><th>Beskrivning</th><th>Värde</th><th>Enhet</th><th>Status</th><th>Kommentar</th></tr></thead>
-        <tbody>
-          ${(sess.values||[]).map((v,i)=>{
-            const alarm = r?.points[i]&&v.value!==undefined&&v.value!==''&&
-              ((r.points[i].refLow!==undefined&&parseFloat(v.value)<r.points[i].refLow)||
-               (r.points[i].refHigh!==undefined&&parseFloat(v.value)>r.points[i].refHigh));
-            return `<tr class="${alarm?'alarm':''}${i%2===0?'':'alt'}">
-              <td>${i+1}</td>
-              <td>${esc(v.posId||'')}</td>
-              <td>${esc(v.label||'')}</td>
-              <td><strong>${v.value!==undefined&&v.value!==''?v.value:'—'}</strong></td>
-              <td>${esc(v.unit||'')}</td>
-              <td>${v.status||''}</td>
-              <td>${esc(v.comment||'')}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-      <div class="sig-section">
-        <div class="sig-box"><div class="sig-label">Utförd av</div><div class="sig-name">${esc(sess.operator||'')}</div><div class="sig-line"></div></div>
-        <div class="sig-box"><div class="sig-label">Granskad av</div><div class="sig-name"></div><div class="sig-line"></div></div>
-        <div class="sig-box"><div class="sig-label">Datum</div><div class="sig-name">${new Date(sess.ts).toLocaleDateString('sv-SE')}</div><div class="sig-line"></div></div>
-      </div>`;
+    var f = getFac(sess.facilityId);
+    var r = DB.rounds.find(function(r){return r.id===sess.roundId;});
+    var rows = (sess.values||[]).map(function(v,i){
+      var alarm = r&&r.points[i]&&v.value!==undefined&&v.value!==''&&
+        ((r.points[i].refLow!==undefined&&parseFloat(v.value)<r.points[i].refLow)||
+         (r.points[i].refHigh!==undefined&&parseFloat(v.value)>r.points[i].refHigh));
+      return '<tr class="'+(alarm?'alarm':'')+(i%2===0?'':'alt')+'">'
+        +'<td>'+(i+1)+'</td>'
+        +'<td>'+esc(v.posId||'')+'</td>'
+        +'<td>'+esc(v.label||'')+'</td>'
+        +'<td><strong>'+(v.value!==undefined&&v.value!==''?v.value:'—')+'</strong></td>'
+        +'<td>'+esc(v.unit||'')+'</td>'
+        +'<td>'+(v.status||'')+'</td>'
+        +'<td>'+esc(v.comment||'')+'</td>'
+        +'</tr>';
+    }).join('');
+    content = '<div class="header"><div class="logo">Gasum</div>'
+      +'<div class="title">Rondering — Protokoll</div></div>'
+      +'<table class="info-table">'
+      +'<tr><th>Rondomgång</th><td>'+esc(sess.roundName||'')+'</td>'
+      +'<th>Datum/tid</th><td>'+new Date(sess.ts).toLocaleString('sv-SE')+'</td></tr>'
+      +'<tr><th>Anläggning</th><td>'+esc(sess.facilityName||'')+'</td>'
+      +'<th>Operatör</th><td>'+esc(sess.operator||'')+'</td></tr>'
+      +'</table>'
+      +'<table class="data-table"><thead><tr>'
+      +'<th>#</th><th>Pos-ID</th><th>Beskrivning</th>'
+      +'<th>Värde</th><th>Enhet</th><th>Status</th><th>Kommentar</th>'
+      +'</tr></thead><tbody>'+rows+'</tbody></table>'
+      +'<div class="sig-section">'
+      +'<div class="sig-box"><div class="sig-label">Utförd av</div>'
+      +'<div class="sig-name">'+esc(sess.operator||'')+'</div>'
+      +'<div class="sig-line"></div></div>'
+      +'<div class="sig-box"><div class="sig-label">Granskad av</div>'
+      +'<div class="sig-line" style="margin-top:24px"></div></div>'
+      +'<div class="sig-box"><div class="sig-label">Datum</div>'
+      +'<div class="sig-name">'+new Date(sess.ts).toLocaleDateString('sv-SE')+'</div>'
+      +'<div class="sig-line"></div></div>'
+      +'</div>';
   }
-
   else if(type==='logbook'){
-    // Export logbook entries for current facility
-    const fid = _lbFacId;
-    const f = getFac(fid);
-    if(!fid||!f){ toast('Välj en anläggning i loggboken först.'); return; }
-    const entries = DB.logEntries
-      .filter(e=>e.facilityId===fid)
-      .slice(0,50); // max 50 entries
-    content = `
-      <div class="header">
-        <div class="logo">Gasum</div>
-        <div class="title">Loggbok — ${esc(f.name)}</div>
-      </div>
-      <table class="info-table">
-        <tr><th>Anläggning</th><td>${esc(f.name)}</td><th>Exporterad</th><td>${now}</td></tr>
-        <tr><th>Antal inlägg</th><td>${entries.length} (max 50 visas)</td><th>Land</th><td>${f.country||'SE'}</td></tr>
-      </table>
-      <table class="data-table">
-        <thead><tr><th>Datum</th><th>Kategori</th><th>Rubrik</th><th>Text</th><th>Författare</th></tr></thead>
-        <tbody>
-          ${entries.map((e,i)=>`<tr class="${i%2===0?'':'alt'}${e.category==='larm'?' alarm':''}">
-            <td style="white-space:nowrap">${new Date(e.ts).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'})}</td>
-            <td><span class="cat-badge">${esc(e.category||'info')}</span></td>
-            <td><strong>${esc(e.title||'')}</strong></td>
-            <td>${esc((e.text||'').slice(0,200))}${(e.text||'').length>200?'...':''}</td>
-            <td>${esc(e.authorName||'')}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>`;
+    var fid = _lbFacId;
+    var fac = getFac(fid);
+    if(!fid||!fac){ toast('Välj en anläggning i loggboken först.'); return; }
+    var entries = DB.logEntries.filter(function(e){return e.facilityId===fid;}).slice(0,50);
+    var rows2 = entries.map(function(e,i){
+      return '<tr class="'+(i%2===0?'':'alt')+(e.category==='larm'?' alarm':'')+'">'
+        +'<td style="white-space:nowrap">'+new Date(e.ts).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'})+'</td>'
+        +'<td><span class="cat-badge">'+esc(e.category||'info')+'</span></td>'
+        +'<td><strong>'+esc(e.title||'')+'</strong></td>'
+        +'<td>'+esc((e.text||'').slice(0,200))+'</td>'
+        +'<td>'+esc(e.authorName||'')+'</td>'
+        +'</tr>';
+    }).join('');
+    content = '<div class="header"><div class="logo">Gasum</div>'
+      +'<div class="title">Loggbok — '+esc(fac.name)+'</div></div>'
+      +'<table class="info-table">'
+      +'<tr><th>Anläggning</th><td>'+esc(fac.name)+'</td>'
+      +'<th>Exporterad</th><td>'+now+'</td></tr>'
+      +'</table>'
+      +'<table class="data-table"><thead><tr>'
+      +'<th>Datum</th><th>Kategori</th><th>Rubrik</th><th>Text</th><th>Författare</th>'
+      +'</tr></thead><tbody>'+rows2+'</tbody></table>';
   }
-
   else if(type==='roundplan'){
-    // Export round plan / schedule overview
-    const fids = visFacIds();
-    const rounds = visRounds();
-    const f = facFlt!=='all' ? getFac(facFlt) : null;
-    const filteredRounds = f ? rounds.filter(r=>r.facilityId===f.id) : rounds;
-    content = `
-      <div class="header">
-        <div class="logo">Gasum</div>
-        <div class="title">Rondprogram${f?' — '+esc(f.name):''}</div>
-      </div>
-      <table class="info-table">
-        <tr><th>Utskriven</th><td>${now}</td><th>Antal rondomgångar</th><td>${filteredRounds.length}</td></tr>
-      </table>
-      ${filteredRounds.map(r=>{
-        const fac = getFac(r.facilityId);
-        const pt = getPart(r.facilityId, r.partId);
-        return `<div style="page-break-inside:avoid;margin-bottom:20px">
-          <h3 style="background:#1e3a8a;color:white;padding:6px 10px;margin:0 0 0 0;font-size:12px">
-            ${fac?getCtryFlag(fac.country||'SE')+' '+esc(fac.name)+' › ':''} ${esc(r.name)}
-            ${pt?' › '+esc(pt.name):''}
-            <span style="float:right;font-weight:normal">${r.schedule?schLbl(r.schedule):'Inget schema'} · ${r.points.length} punkter</span>
-          </h3>
-          <table class="data-table" style="margin-bottom:0">
-            <thead><tr><th>#</th><th>Pos-ID</th><th>Beskrivning</th><th>Inmatning</th><th>Enhet</th><th>Ref Min</th><th>Ref Max</th></tr></thead>
-            <tbody>
-              ${r.points.map((p,i)=>`<tr class="${i%2===0?'':'alt'}">
-                <td>${i+1}</td>
-                <td>${esc(p.posId||'')}</td>
-                <td>${esc(p.label||'')}</td>
-                <td>${p.inputType==='status'?'Bocka':'Numeriskt'}</td>
-                <td>${esc(p.unit||'')}</td>
-                <td>${p.refLow!==undefined&&p.refLow!==''?p.refLow:''}</td>
-                <td>${p.refHigh!==undefined&&p.refHigh!==''?p.refHigh:''}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>`;
-      }).join('')}`;
+    var rounds = visRounds();
+    var fFilt = facFlt!=='all' ? getFac(facFlt) : null;
+    if(fFilt) rounds = rounds.filter(function(r){return r.facilityId===fFilt.id;});
+    var rHtml = rounds.map(function(r){
+      var rf = getFac(r.facilityId);
+      var rp = getPart(r.facilityId, r.partId);
+      var pts = r.points.map(function(p,i){
+        return '<tr class="'+(i%2===0?'':'alt')+'">'
+          +'<td>'+(i+1)+'</td><td>'+esc(p.posId||'')+'</td>'
+          +'<td>'+esc(p.label||'')+'</td>'
+          +'<td>'+(p.inputType==='status'?'Bocka':'Numeriskt')+'</td>'
+          +'<td>'+esc(p.unit||'')+'</td>'
+          +'<td>'+(p.refLow!==undefined&&p.refLow!==''?p.refLow:'')+'</td>'
+          +'<td>'+(p.refHigh!==undefined&&p.refHigh!==''?p.refHigh:'')+'</td>'
+          +'</tr>';
+      }).join('');
+      return '<div style="page-break-inside:avoid;margin-bottom:20px">'
+        +'<h3 style="background:#1e3a8a;color:white;padding:6px 10px;margin:0;font-size:12px">'
+        +(rf?getCtryFlag(rf.country||'SE')+' '+esc(rf.name)+' › ':'')+esc(r.name)
+        +(rp?' › '+esc(rp.name):'')
+        +'<span style="float:right;font-weight:normal">'
+        +(r.schedule?schLbl(r.schedule):'Inget schema')+' · '+r.points.length+' punkter'
+        +'</span></h3>'
+        +'<table class="data-table"><thead><tr>'
+        +'<th>#</th><th>Pos-ID</th><th>Beskrivning</th>'
+        +'<th>Inmatning</th><th>Enhet</th><th>Ref Min</th><th>Ref Max</th>'
+        +'</tr></thead><tbody>'+pts+'</tbody></table>'
+        +'</div>';
+    }).join('');
+    content = '<div class="header"><div class="logo">Gasum</div>'
+      +'<div class="title">Rondprogram'+(fFilt?' — '+esc(fFilt.name):'')+'</div></div>'
+      +'<table class="info-table"><tr><th>Utskriven</th><td>'+now+'</td>'
+      +'<th>Rondomgångar</th><td>'+rounds.length+'</td></tr></table>'
+      +rHtml;
   }
 
-  // Build print window
-  const w = window.open('','_blank','width=900,height=700');
-  w.document.write(`<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8">
-  <title>Gasum — Export</title>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:Arial,sans-serif;font-size:11px;color:#1a1f2e;padding:20px;max-width:900px;margin:0 auto}
-    .header{display:flex;align-items:center;gap:16px;margin-bottom:14px;padding-bottom:10px;border-bottom:3px solid #5b7fd4}
-    .logo{font-size:28px;font-weight:900;color:#5b7fd4;letter-spacing:-1px}
-    .title{font-size:18px;font-weight:700;color:#1a1f2e}
-    .info-table{width:100%;border-collapse:collapse;margin-bottom:12px;font-size:10px}
-    .info-table th{background:#f4f6f8;padding:5px 8px;text-align:left;font-weight:700;color:#6b7280;border:1px solid #e5e7eb;width:12%}
-    .info-table td{padding:5px 8px;border:1px solid #e5e7eb;background:#ffffff}
-    .data-table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:10px}
-    .data-table thead tr{background:#1e3a8a;color:white}
-    .data-table th{padding:5px 7px;text-align:left;font-weight:700;font-size:9px;letter-spacing:.3px}
-    .data-table td{padding:4px 7px;border:1px solid #e5e7eb;vertical-align:top}
-    .data-table tr.alt td{background:#f8faff}
-    .data-table tr.alarm td{background:#fee2e2;color:#991b1b}
-    h3{font-size:12px}
-    .sig-section{display:flex;gap:20px;margin-top:20px;page-break-inside:avoid}
-    .sig-box{flex:1;border:1px solid #e5e7eb;padding:10px;border-radius:4px}
-    .sig-label{font-size:9px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-    .sig-name{font-size:12px;margin-bottom:20px}
-    .sig-line{border-bottom:1px solid #1a1f2e;margin-top:4px}
-    .cat-badge{background:#dbeafe;color:#1d4ed8;padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;white-space:nowrap}
-    .footer{margin-top:20px;padding-top:8px;border-top:1px solid #e5e7eb;font-size:9px;color:#9ca3af;display:flex;justify-content:space-between}
-    @media print{
-      body{padding:10px}
-      @page{margin:1cm;size:A4}
-      .no-print{display:none}
-    }
-  </style>
-  </head><body>
-  <div class="no-print" style="background:#1e3a8a;color:white;padding:10px 16px;margin:-20px -20px 16px;display:flex;justify-content:space-between;align-items:center">
-    <span style="font-weight:700">Förhandsgranskning — klicka Skriv ut för att spara som PDF</span>
-    <button onclick="window.print()" style="background:white;color:#1e3a8a;border:none;padding:7px 16px;border-radius:4px;font-weight:700;cursor:pointer;font-size:13px">🖨 Skriv ut / Spara PDF</button>
-  </div>
-  ${content}
-  <div class="footer">
-    <span>Gasum Rondering · Exporterad ${now}</span>
-    <span>Konfidentiellt — internt dokument</span>
-  </div>
-  
-  <script>
-    if('serviceWorker' in navigator){
-      window.addEventListener('load', ()=>{
-        navigator.serviceWorker.register('sw.js')
-          .then(r=>console.log('SW registered:', r.scope))
-          .catch(e=>console.log('SW error:', e));
-      });
-    }
-  </script>
-</body></html>`);
+  // Build print window safely
+  var css = '*{margin:0;padding:0;box-sizing:border-box}'
+    +'body{font-family:Arial,sans-serif;font-size:11px;color:#1a1f2e;padding:20px;max-width:900px;margin:0 auto}'
+    +'.header{display:flex;align-items:center;gap:16px;margin-bottom:14px;padding-bottom:10px;border-bottom:3px solid #5b7fd4}'
+    +'.logo{font-size:28px;font-weight:900;color:#5b7fd4;letter-spacing:-1px}'
+    +'.title{font-size:18px;font-weight:700}'
+    +'.info-table{width:100%;border-collapse:collapse;margin-bottom:12px;font-size:10px}'
+    +'.info-table th{background:#f4f6f8;padding:5px 8px;text-align:left;font-weight:700;color:#6b7280;border:1px solid #e5e7eb}'
+    +'.info-table td{padding:5px 8px;border:1px solid #e5e7eb}'
+    +'.data-table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:10px}'
+    +'.data-table thead tr{background:#1e3a8a;color:white}'
+    +'.data-table th{padding:5px 7px;text-align:left;font-weight:700;font-size:9px}'
+    +'.data-table td{padding:4px 7px;border:1px solid #e5e7eb;vertical-align:top}'
+    +'.data-table tr.alt td{background:#f8faff}'
+    +'.data-table tr.alarm td{background:#fee2e2;color:#991b1b}'
+    +'.sig-section{display:flex;gap:20px;margin-top:20px}'
+    +'.sig-box{flex:1;border:1px solid #e5e7eb;padding:10px;border-radius:4px}'
+    +'.sig-label{font-size:9px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px}'
+    +'.sig-name{font-size:12px;margin-bottom:16px}'
+    +'.sig-line{border-bottom:1px solid #1a1f2e}'
+    +'.cat-badge{background:#dbeafe;color:#1d4ed8;padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700}'
+    +'.footer{margin-top:20px;padding-top:8px;border-top:1px solid #e5e7eb;font-size:9px;color:#9ca3af;display:flex;justify-content:space-between}'
+    +'@media print{@page{margin:1cm;size:A4}.no-print{display:none}}';
+
+  var printBtn = '<div class="no-print" style="background:#1e3a8a;color:white;padding:10px 16px;margin:-20px -20px 16px;display:flex;justify-content:space-between;align-items:center">'
+    +'<span style="font-weight:700">Klicka Skriv ut för att spara som PDF</span>'
+    +'<button onclick="window.print()" style="background:white;color:#1e3a8a;border:none;padding:7px 16px;border-radius:4px;font-weight:700;cursor:pointer">Skriv ut / Spara PDF</button>'
+    +'</div>';
+
+  var footer = '<div class="footer"><span>Gasum Rondering - Exporterad '+now+'</span>'
+    +'<span>Konfidentiellt - internt dokument</span></div>';
+
+  var w = window.open('','_blank','width=900,height=700');
+  w.document.write('<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8">'
+    +'<title>Gasum Export</title><style>'+css+'</style></head><body>'
+    +printBtn+content+footer+'</body></html>');
   w.document.close();
 }
 
