@@ -419,6 +419,9 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
       <div class="home-user-fac" id="home-fac-txt">—</div>
     </div>
 
+    <!-- Update banner -->
+    <div id="update-banner" style="display:none;padding:0 8px"></div>
+
     <!-- Auto assigned facilities (read-only, set by admin) -->
     <div id="home-fac-chips" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:22px"></div>
 
@@ -465,7 +468,10 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
 
     <!-- Version + Logout -->
     <div style="margin-top:8px;font-size:10px;color:rgba(255,255,255,.2);letter-spacing:.5px">v1.0 · Gasum Rondering</div>
-    <button class="home-logout" onclick="logout()" style="margin-top:4px">↩ Logga ut</button>
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:4px">
+      <button class="home-logout" onclick="logout()">↩ Logga ut</button>
+      <button onclick="showVersionInfo()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:20px;padding:8px 16px;font-size:12px;cursor:pointer">🔄 Uppdatera app</button>
+    </div>
   </div>
 </div>
 
@@ -1357,7 +1363,8 @@ function updDots(){for(let i=0;i<4;i++)document.getElementById('d'+i)?.classList
 // ── SESSION CACHE ─────────────────────────────────────────────────
 // Stores userId + last-seen timestamps so user skips login on re-open.
 // Cleared only on explicit logout or when app version changes.
-const APP_VERSION = 'ron_v8_0';  // 2026-07-28 — polish + import + WP // bump this to force re-login after updates
+const APP_VERSION = 'ron_v8_0';  // 2026-07-28 — polish + import + WP
+const APP_SEMVER = '1.1';  // Semantic version — must match version.json when released // bump this to force re-login after updates
 const SESSION_KEY = 'ron_session';
 
 function sessionSave(){
@@ -1432,6 +1439,11 @@ function renderHomeBadges(){
 
 // ── HOME SCREEN ACTIONS ───────────────────────────────────────────
 function showHome(){
+  // Start version polling on first home screen visit
+  if(!window._versionPollStarted){
+    window._versionPollStarted=true;
+    startVersionPolling();
+  }
   document.getElementById('scr-login').classList.add('off');
   document.getElementById('scr-app').classList.add('off');
   document.getElementById('scr-home').classList.remove('off');
@@ -1579,6 +1591,36 @@ function checkPin(){
     document.getElementById('perr').textContent='Fel PIN-kod, försök igen';
     pinBuf='';updDots();
     setTimeout(()=>{const e=document.getElementById('perr');if(e)e.textContent='';},1500);
+  }
+}
+
+
+function showVersionInfo(){
+  const hasUpdate = _updateAvailable;
+  const msg = hasUpdate
+    ? 'Ny version '+_updateAvailable.version+' finns!\n\nNyheter:\n'
+      +(_updateAvailable.notes||[]).map(n=>'• '+n).join('\n')
+      +'\n\nTryck OK för att uppdatera.'
+    : 'Du har senaste versionen ('+APP_SEMVER+').\n\nTryck OK för att ladda om appen.';
+  if(confirm(msg)) checkForUpdate();
+}
+
+function checkForUpdate(){
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.getRegistration().then(reg=>{
+      if(reg){
+        reg.update().then(()=>{
+          // Tell SW to skip waiting and activate new version
+          if(reg.waiting) reg.waiting.postMessage('skipWaiting');
+          toast('🔄 Söker efter uppdatering...',2000);
+          setTimeout(()=>location.reload(true),2000);
+        });
+      } else {
+        location.reload(true);
+      }
+    });
+  } else {
+    location.reload(true);
   }
 }
 
@@ -2457,10 +2499,19 @@ function rUsr(){
             </select></div>
         </div>
         <div class="fld" style="margin:0"><label>Tilldelade anläggningar</label>
-          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">
-            ${u.role==='admin'?'<span class="tag ti">Alla</span>':DB.facilities.length?DB.facilities.map(f=>{const on=(u.facilityIds||[]).includes(f.id);return`<label id="fl-${u.id}-${f.id}" style="cursor:pointer;padding:3px 9px;border:1.5px solid ${on?'var(--acc)':'var(--b2)'};border-radius:20px;font-size:10px;font-weight:600;font-family:'Barlow Condensed',sans-serif;color:${on?'var(--acc)':'var(--mut)'}"><input type="checkbox" ${on?'checked':''} style="display:none" onchange="togUF('${u.id}','${f.id}',this.checked,this.closest('label'))">${getCtryFlag(f.country||'SE')} ${esc(f.name)}</label>`;}).join(''):'<span style="color:var(--m2);font-size:11px">Inga anläggningar</span>'}
-          </div>
-        </div>
+          ${u.role==='admin'
+            ? '<span class="tag ti">Alla anläggningar (admin)</span>'
+            : DB.facilities.length===0
+              ? `<div style="color:var(--warn);font-size:12px;padding:6px 0">
+                   ⚠ Inga anläggningar finns ännu — importera anläggningsstrukturen först under fliken "Importera".
+                 </div>`
+              : `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">
+                  ${DB.facilities.map(f=>{
+                    const on=(u.facilityIds||[]).includes(f.id);
+                    return '<label id="fl-'+u.id+'-'+f.id+'" style="cursor:pointer;padding:4px 11px;border:1.5px solid '+(on?'var(--acc)':'var(--b2)')+';border-radius:20px;font-size:11px;font-weight:600;font-family:\'Barlow Condensed\',sans-serif;color:'+(on?'var(--acc)':'var(--mut)')+'"><input type="checkbox" '+(on?'checked':'')+' style="display:none" onchange="togUF(\''+u.id+'\',\''+f.id+'\',this.checked,this.closest(\'label\'))">'+getCtryFlag(f.country||'SE')+' '+esc(f.name)+'</label>';
+                  }).join('')}
+                 </div>`
+          }
       </div>
       <button class="btn bd" onclick="delUsr('${u.id}')">Ta bort</button>
     </div>
@@ -4094,6 +4145,64 @@ function exportPDF(type){
     +printBtn+content+footer+'</body></html>');
   w.document.close();
 }
+
+
+// ══ VERSION CHECK ══════════════════════════════════════════════════
+let _updateAvailable = null;
+
+async function checkAppVersion(){
+  try{
+    // Fetch version.json with cache-bust to always get latest
+    const resp = await fetch('./version.json?t='+Date.now());
+    if(!resp.ok) return;
+    const data = await resp.json();
+    const latest = data.version;
+    if(!latest) return;
+
+    // Compare versions (simple string compare works for x.y format)
+    if(latest !== APP_SEMVER){
+      _updateAvailable = data;
+      showUpdateBanner(data);
+    }
+  }catch(e){
+    console.log('Version check failed:', e.message);
+  }
+}
+
+function showUpdateBanner(data){
+  // Show on home screen if visible
+  const banner = document.getElementById('update-banner');
+  if(banner){
+    const notesList = (data.notes||[]).slice(0,3).map(n=>'• '+n).join('<br>');
+    banner.innerHTML = `
+      <div onclick="checkForUpdate()" style="
+        background:linear-gradient(135deg,#1d4ed8,#2563eb);
+        border-radius:12px;padding:12px 14px;margin-bottom:14px;
+        cursor:pointer;box-shadow:0 2px 12px rgba(37,99,235,.4)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+          <span style="font-size:18px">🆕</span>
+          <span style="font-weight:700;font-size:14px;color:white">
+            Ny version ${esc(data.version)} tillgänglig!
+          </span>
+          <span style="margin-left:auto;font-size:11px;color:rgba(255,255,255,.7)">Tryck för att uppdatera</span>
+        </div>
+        <div style="font-size:11px;color:rgba(255,255,255,.8);line-height:1.6">
+          ${notesList}
+        </div>
+      </div>`;
+    banner.style.display='';
+  }
+
+  // Also show persistent toast
+  toast('🆕 Ny version '+data.version+' finns — tryck "Uppdatera app" på hemskärmen', 6000);
+}
+
+// Check on startup and then every 30 minutes
+function startVersionPolling(){
+  checkAppVersion();
+  setInterval(checkAppVersion, 30 * 60 * 1000);
+}
+
 
 // ── TOAST ──────────────────────────────────────────────────────────
 let _tt;

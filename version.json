@@ -1,0 +1,18 @@
+{
+  "version": "1.1",
+  "released": "2026-09-07",
+  "notes": [
+    "Google Drive-synk tillagd — data delas mellan alla användare",
+    "Importera anläggningsstruktur och användare från Excel",
+    "Uppdateringsnotis — appen meddelar när ny version finns",
+    "Gasum-ikon på hemskärmen",
+    "Tangentbordsstöd för PIN-inmatning på dator"
+  ],
+  "history": [
+    {
+      "version": "1.0",
+      "released": "2026-08-01",
+      "notes": ["Första versionen — Rondering, Loggbok, Admin"]
+    }
+  ]
+}
