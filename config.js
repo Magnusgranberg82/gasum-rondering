@@ -26,7 +26,7 @@ window.GDRIVE_CONFIG = {
 
   // Google Drive Fil-ID (JSON-datafilen)
   // Hämtas från URL:en i Google Drive: /d/[DETTA_ÄR_FIL_ID]/
-  fileId: '1mVCJRz3Y-D1KAg0pbeb_huLgf98omj3NQiHd7mcpuho',
+  fileId: '1O0E4qfploBgyWRscUaPHEwkGUz29AjFx',
 
   // OAuth 2.0 Client ID
   // Hämtas från: console.cloud.google.com → APIs & Services → Credentials

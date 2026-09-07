@@ -924,45 +924,35 @@ async function gdriveSave(){
     DB._savedAt = new Date().toISOString();
     DB._savedBy = CU?.name || 'Okänd';
     const content = JSON.stringify(DB, null, 2);
-    // Use multipart upload to update existing file
-    const boundary = '-------314159265358979323846';
-    const body =
-      `--${boundary}
-Content-Type: application/json; charset=UTF-8
 
-` +
-      JSON.stringify({name:'gasum_rondering_data.json'})+
-      `
---${boundary}
-Content-Type: application/json
-
-`+
-      content + `
---${boundary}--`;
+    // Simple media upload — works with any file type including plain files
     const resp = await fetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${GDRIVE_CONFIG.fileId}?uploadType=multipart`,
+      'https://www.googleapis.com/upload/drive/v3/files/'+GDRIVE_CONFIG.fileId+'?uploadType=media',
       {
         method:'PATCH',
         headers:{
           'Authorization': 'Bearer '+_gdriveToken,
-          'Content-Type': `multipart/related; boundary="${boundary}"`,
+          'Content-Type': 'application/json',
         },
-        body,
+        body: content,
       }
     );
     if(resp.ok){
       _gdriveLastSaved = new Date();
-      gdriveStatusUI('ok','Sparad '+_gdriveLastSaved.toLocaleTimeString('sv-SE'));
+      gdriveStatusUI('ok','☁️ Sparad '+_gdriveLastSaved.toLocaleTimeString('sv-SE'));
     } else {
-      const err = await resp.text();
-      throw new Error(resp.status+' '+err.slice(0,100));
+      const err = await resp.json().catch(()=>({error:{message:resp.status}}));
+      const msg = err?.error?.message || resp.status;
+      // If 403/404 — likely wrong file type, show helpful message
+      if(resp.status===403||resp.status===404){
+        gdriveStatusUI('error','⚠ Fel fil-typ — se instruktioner i Admin → Inställningar');
+      } else {
+        throw new Error(msg);
+      }
     }
   }catch(e){
     console.error('GDrive save error:', e);
     gdriveStatusUI('error', 'Fel vid sparning: '+e.message);
-    // Retry once after 5 seconds
-    setTimeout(()=>{ _gdriveSyncing=false; gdriveSave(); }, 5000);
-    return;
   }
   _gdriveSyncing = false;
 }
@@ -3162,54 +3152,60 @@ function parseAndImportUsers(rows){
   const preview=document.getElementById('imp-usr-preview');
   if(!rows.length){preview.innerHTML='<p style="color:var(--mut);font-size:12px">Inga rader hittades.</p>';return;}
 
-  // Find header row (first row with "namn" in it)
-  let headerIdx=0;
+  // Find header row index — first row containing "namn"
+  let headerIdx=-1;
   for(let i=0;i<Math.min(rows.length,5);i++){
     const vals=Object.values(rows[i]).map(v=>String(v||'').toLowerCase());
-    if(vals.some(v=>v.includes('namn'))) { headerIdx=i; break; }
+    if(vals.some(v=>v==='namn'||v==='name')) { headerIdx=i; break; }
   }
+  if(headerIdx<0){ headerIdx=0; } // fallback to first row
 
-  // Re-parse with header row — use raw array approach for robustness
   const keys=Object.keys(rows[headerIdx]);
-  const kNamn=keys.find(k=>String(k).toLowerCase().includes('namn'))||keys[0];
+  const kNamn=keys.find(k=>String(k).toLowerCase().replace(/\s/g,'').includes('namn'))||keys[0];
   const kPin =keys.find(k=>String(k).toLowerCase().includes('pin'))||keys[1];
   const kRoll=keys.find(k=>String(k).toLowerCase().includes('roll'))||keys[2];
-  const kFac =keys.find(k=>String(k).toLowerCase().includes('anl')||String(k).toLowerCase().includes('fac'))||keys[3];
+  const kFac =keys.find(k=>String(k).toLowerCase().replace(/\s/g,'').includes('anl')||String(k).toLowerCase().includes('fac'))||keys[3];
 
   let added=0,skipped=0;
   const results=[];
 
   rows.forEach((row,idx)=>{
-    if(idx===headerIdx) return; // skip header row
+    if(idx<=headerIdx) return; // skip header and rows before it
+
     const namn=String(row[kNamn]||'').trim();
-    const pin=String(row[kPin]||'1234').replace(/\D/g,'').padStart(4,'0').slice(0,4);
+    if(!namn) return; // skip empty rows and note rows
+
+    // Skip if looks like a note/instruction row
+    if(namn.startsWith('⚠')||namn.startsWith('[')||namn.toLowerCase().includes('fyll i')) return;
+
+    const pin=String(row[kPin]||'1234').replace(/\D/g,'').slice(0,4).padStart(4,'0');
     const rollRaw=String(row[kRoll]||'').toLowerCase();
     const roll=rollRaw.includes('admin')?'admin':'operator';
     const facName=String(row[kFac]||'').trim();
 
-    if(!namn||namn===kNamn){skipped++;return;}
     if(DB.users.find(u=>u.name.toLowerCase()===namn.toLowerCase())){
       skipped++;
-      results.push({namn,status:'⚠ Hoppades över (finns redan)',fac:''});
+      results.push({namn,status:'⚠ Finns redan',fac:''});
       return;
     }
 
-    // Find facility by name (case-insensitive partial match)
     const fac=facName
       ? DB.facilities.find(f=>f.name.toLowerCase().includes(facName.toLowerCase()))
       : null;
 
     DB.users.push({id:uid(),name:namn,role:roll,pin,facilityIds:fac?[fac.id]:[]});
     added++;
-    results.push({namn,status:'✓ Skapad ('+roll+')',fac:fac?.name||'⚠ Anläggning ej hittad'});
+    results.push({namn,status:'✓ '+roll,fac:fac?.name||(facName?'⚠ Ej hittad: '+facName:'—')});
   });
 
   storageSave();
-  preview.innerHTML='<div class="card fi" style="border-color:var(--good)">'
-    +'<div class="bc" style="color:var(--good);margin-bottom:8px">✓ '+added+' användare importerade'+(skipped?' · '+skipped+' hoppade över':'')+' </div>'
+  preview.innerHTML='<div class="card fi" style="border-color:'+(added>0?'var(--good)':'var(--warn)')+'">'
+    +'<div class="bc" style="color:'+(added>0?'var(--good)':'var(--warn)')+';margin-bottom:8px">'
+    +(added>0?'✓ '+added+' användare importerade':'⚠ Inga användare importerades')
+    +(skipped?' · '+skipped+' hoppade över':'')+'</div>'
     +results.map(r=>'<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--brd);display:flex;justify-content:space-between">'
       +'<span>'+r.status+' — '+esc(r.namn)+'</span>'
-      +(r.fac?'<span style="color:var(--mut);font-size:11px">'+esc(r.fac)+'</span>':'')
+      +'<span style="color:var(--mut);font-size:11px">'+esc(r.fac)+'</span>'
       +'</div>').join('')
     +'</div>';
 }
