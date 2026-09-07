@@ -2742,14 +2742,12 @@ function impXlsx(event){
   const reader=new FileReader();
   reader.onload=e=>{
     try{
-      const data=new Uint8Array(e.target.result);
-      const wb=XLSX.read(data,{type:'uint8array'});
-      // Try sheet named "Daglig rondering" first, then first sheet
-      const sheetName = wb.SheetNames.find(s=>
-        s.toLowerCase().includes('daglig')||
-        s.toLowerCase().includes('rond')||
-        s.toLowerCase().includes('rond')
-      ) || wb.SheetNames[0];
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      // Try known sheet names in order of preference
+      const sheetName = wb.SheetNames.find(s=>{
+        const l=s.toLowerCase();
+        return l==='import'||l.includes('daglig')||l.includes('rond');
+      }) || wb.SheetNames[0];
       const ws=wb.Sheets[sheetName];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
       parseAndPreviewRond(rows, sheetName, wb.SheetNames);
@@ -2764,22 +2762,94 @@ function impXlsx(event){
 
 function parseAndPreviewRond(rows, sheetName, allSheets){
   const preview=document.getElementById('imp-preview');
-  // Find header row — look for row with "Beskrivning" and "Anläggningsdel"
+
+  // ── Detect file type: Structure import (Land/Anläggning/Del) vs Rondprogram ──
   let headerRow=-1;
+  let isStructureImport=false;
+
   for(let i=0;i<Math.min(rows.length,10);i++){
-    const r=rows[i].map(v=>String(v||'').toLowerCase());
+    const r=rows[i].map(v=>String(v||'').toLowerCase().trim());
+    // Structure import: has "land" and "anläggningsnamn" and "anläggningsdel"
+    if(r.some(v=>v==='land'||v==='land (se/no/dk/fi/is)')&&
+       r.some(v=>v.includes('anläggningsnamn')||v.includes('anläggning'))&&
+       r.some(v=>v.includes('del'))){
+      headerRow=i; isStructureImport=true; break;
+    }
+    // Rondprogram: has "beskrivning" and "anläggningsdel"
     if(r.some(v=>v.includes('beskrivning'))&&r.some(v=>v.includes('del')||v.includes('anläggning'))){
       headerRow=i; break;
     }
   }
+
   if(headerRow<0){
     preview.innerHTML=`<div class="card" style="border-color:var(--warn)">
-      <p style="color:var(--warn)">⚠ Hittade ingen rubrikrad med "Beskrivning" och "Anläggningsdel". Kontrollera att filen har rätt format.</p>
+      <p style="color:var(--warn)">⚠ Hittade ingen rubrikrad. Kontrollera att filen har rätt format.</p>
       <p style="color:var(--mut);font-size:12px;margin-top:6px">Hittade flik: <strong>${sheetName}</strong> — Tillgängliga flikar: ${allSheets.join(', ')}</p>
     </div>`;
     return;
   }
 
+  // ── STRUCTURE IMPORT — creates facility + parts only (no round points) ────
+  if(isStructureImport){
+    const hdrs=rows[headerRow].map(v=>String(v||'').toLowerCase().trim());
+    const iLand=hdrs.findIndex(h=>h.includes('land'));
+    const iFacName=hdrs.findIndex(h=>h.includes('anläggningsnamn')||h.includes('anläggning'));
+    const iDel=hdrs.findIndex(h=>h.includes('del'));
+    const iKomm=hdrs.findIndex(h=>h.includes('kommentar')||h.includes('comment')||h.includes('notes'));
+
+    const parts=[];
+    let facName='', facLand='SE';
+    for(let i=headerRow+1;i<rows.length;i++){
+      const row=rows[i];
+      const land=String(iLand>=0?row[iLand]||'':'').trim();
+      const namn=String(iFacName>=0?row[iFacName]||'':'').trim();
+      const del=String(iDel>=0?row[iDel]||'':'').trim();
+      const komm=String(iKomm>=0?row[iKomm]||'':'').trim();
+      if(!del) continue;
+      if(land) facLand=land;
+      if(namn) facName=namn;
+      parts.push({del,komm});
+    }
+
+    window._importStructure={facName,facLand,parts};
+
+    preview.innerHTML=`
+      <div class="card fi" style="border-color:var(--good)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="font-size:20px">✅</span>
+          <div><div class="bc" style="font-size:16px">Strukturimport klar</div>
+          <div style="color:var(--mut);font-size:12px">
+            ${getCtryFlag(facLand)} ${esc(facName)} · ${parts.length} anläggningsdelar
+          </div></div>
+        </div>
+        <div style="margin-bottom:12px">
+          ${parts.map((p,i)=>`<div style="display:flex;justify-content:space-between;padding:4px 8px;background:var(--s2);border-radius:var(--rs);margin-bottom:3px">
+            <span style="font-size:13px;font-weight:600">${i+1}. ${esc(p.del)}</span>
+            ${p.komm?`<span style="font-size:11px;color:var(--mut)">${esc(p.komm.slice(0,50))}</span>`:''}
+          </div>`).join('')}
+        </div>
+        <div class="fld"><label>Anläggningsnamn</label>
+          <input class="inp" id="imp-struct-fac" value="${esc(facName)}">
+        </div>
+        <div class="fld"><label>Land</label>
+          <select class="sel" id="imp-struct-land">
+            ${COUNTRIES.map(c=>`<option value="${c.code}" ${c.code===facLand?'selected':''}>${c.flag} ${c.name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="fld" style="margin-bottom:0"><label>Eller koppla till befintlig anläggning</label>
+          <select class="sel" id="imp-struct-existing">
+            <option value="">— Skapa ny anläggning —</option>
+            ${DB.facilities.map(f=>`<option value="${f.id}">${getCtryFlag(f.country||'SE')} ${esc(f.name)}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn bp" onclick="doImportStructure()" style="font-size:13px;padding:10px 22px;margin-top:12px">
+          ✓ Importera ${parts.length} anläggningsdelar
+        </button>
+      </div>`;
+    return;
+  }
+
+  // ── RONDPROGRAM IMPORT ─────────────────────────────────────────────────────
   const headers=rows[headerRow].map(v=>String(v||'').toLowerCase().trim());
   const iNr    = headers.findIndex(h=>h==='nr'||h.startsWith('nr'));
   const iDel   = headers.findIndex(h=>h.includes('del')||h.includes('anläggning'));
@@ -2811,7 +2881,6 @@ function parseAndPreviewRond(rows, sheetName, allSheets){
 
     if(!beskr&&!nr) continue; // empty row
     if(!nr&&beskr&&!typ){
-      // This is a section header row (no nr, has text, no type)
       currentSection=beskr;
       if(!sections[currentSection]) sections[currentSection]=[];
       continue;
@@ -2972,14 +3041,57 @@ function doImportRond(sections){
   window._importSections=null;
 }
 
-// ── IMPORT USERS FROM EXCEL ────────────────────────────────────────
+function doImportStructure(){
+  const s=window._importStructure; if(!s)return;
+  const facName=(document.getElementById('imp-struct-fac')?.value||s.facName).trim();
+  const facLand=document.getElementById('imp-struct-land')?.value||s.facLand;
+  const existingId=document.getElementById('imp-struct-existing')?.value||'';
+
+  let facId=existingId;
+  let f=existingId?getFac(existingId):null;
+
+  if(!facId||!f){
+    // Create new facility
+    f={id:uid(),name:facName,country:facLand,type:'biogas',parts:[]};
+    DB.facilities.push(f);
+    facId=f.id;
+  }
+
+  if(!f.parts) f.parts=[];
+
+  // Add parts that don't already exist
+  let added=0,skipped=0;
+  s.parts.forEach(p=>{
+    if(f.parts.find(existing=>existing.name===p.del)){skipped++;return;}
+    f.parts.push({id:uid(),name:p.del,comment:p.komm||''});
+    added++;
+  });
+
+  storageSave();
+  toast(`✓ ${added} anläggningsdelar importerade till "${facName}"${skipped?' ('+skipped+' fanns redan)':''}`);
+
+  document.getElementById('imp-preview').innerHTML=`
+    <div class="card" style="border-color:var(--good);background:var(--gBg)">
+      <div class="bc" style="font-size:16px;color:var(--good)">✓ Import klar!</div>
+      <div style="color:var(--mut);font-size:13px;margin-top:6px">
+        ${getCtryFlag(f.country||'SE')} <strong>${esc(f.name)}</strong> — 
+        ${added} delar tillagda${skipped?' · '+skipped+' hoppades över (fanns redan)':''}.
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn bp" onclick="admTab('fac')">🏭 Visa anläggning</button>
+        <button class="btn bs" onclick="homeGo('logbook')">📖 Öppna loggbok</button>
+      </div>
+    </div>`;
+  window._importStructure=null;
+}
+
+
 function impUsersXlsx(event){
   const file=event.target.files[0]; if(!file)return;
   const reader=new FileReader();
   reader.onload=e=>{
     try{
-      const data=new Uint8Array(e.target.result);
-      const wb=XLSX.read(data,{type:'uint8array'});
+      const wb=XLSX.read(e.target.result,{type:'array'});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
       parseAndImportUsers(rows);
