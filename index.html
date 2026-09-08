@@ -869,6 +869,38 @@ function fetchViaScript(url){
   });
 }
 
+function sendViaIframe(url, jsonData){
+  return new Promise((resolve)=>{
+    const iframeName = 'gsif_'+Date.now();
+    const iframe = document.createElement('iframe');
+    iframe.name = iframeName;
+    iframe.style.cssText = 'display:none;position:absolute;left:-9999px;width:1px;height:1px';
+    document.body.appendChild(iframe);
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = url;
+    form.target = iframeName;
+    form.style.display = 'none';
+
+    const inp = document.createElement('input');
+    inp.type  = 'hidden';
+    inp.name  = 'payload';
+    inp.value = jsonData;
+    form.appendChild(inp);
+    document.body.appendChild(form);
+
+    form.submit();
+
+    // Cleanup after 3s — we don't need the response
+    setTimeout(()=>{
+      try{ document.body.removeChild(form); }catch{}
+      try{ document.body.removeChild(iframe); }catch{}
+      resolve({ok:true});
+    }, 3000);
+  });
+}
+
 // ── INIT ───────────────────────────────────────────────────────────
 async function initJsonBin(){
   if(!USE_CLOUD) return;
