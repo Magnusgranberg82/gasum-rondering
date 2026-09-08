@@ -825,19 +825,12 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
 // ══════════════════════════════════════════════════════════════════
 // JSONBIN_CONFIG laddas från config.js (se GitHub-repot)
 // Lägg ALDRIG in nycklar direkt här — använd config.js istället
+// Wait for config.js to load (it's in a separate script tag before this)
 const JSONBIN_CONFIG = window.JSONBIN_CONFIG || { apiKey:'', binId:'' };
-
 const USE_CLOUD = !!(JSONBIN_CONFIG.apiKey && JSONBIN_CONFIG.binId);
-// Legacy Google Drive support (disabled)
 const USE_GDRIVE = false;
 
-// ── GOOGLE DRIVE SYNC STATE ────────────────────────────────────────
-let _gdriveReady    = false;
-let _gdriveSyncing  = false;
-let _gdriveToken    = null;
-let _gdrivePollTimer = null;
-let _gdriveLastSaved = null;
-let _gdriveConflict  = false;
+// Cloud sync state managed by JSONBin module below
 
 // ── INIT JSONBIN SYNC ──────────────────────────────────────────────
 if(USE_CLOUD){

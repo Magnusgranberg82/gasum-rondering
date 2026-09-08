@@ -1,7 +1,7 @@
 // Gasum Rondering — Service Worker v2.0
 // Network-first strategy: alltid hämta ny version om möjligt
 
-const CACHE = 'gasum-rond-v2';
+const CACHE = 'gasum-rond-v3';
 const APP_FILES = ['./','./index.html','./manifest.json','./icon-192.png','./icon-512.png'];
 
 // Install — cache app shell
