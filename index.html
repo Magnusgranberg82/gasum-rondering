@@ -842,7 +842,7 @@ let _dataFileId     = null;
 
 const DRIVE_FOLDER_ID = '1I_d70G4YZtvOHTD1XUxQaH8bfE1VWi8X';
 const DATA_FILENAME   = 'gasum_data.json';
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyBqbMJ7OnkPwmPl2Ljx7UDgmPjD1NWR-PGWwQQgl19EJ42dld9_VRWM4yyKRd8ogV7hw/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxqKAkUsde-NRjc-UfbynSgJpvGJJpac9iZi0dIwJiVV23_QjtNyn8uNba--IwQIAT8/exec';
 
 // ── INIT ───────────────────────────────────────────────────────────
 async function initJsonBin(){
@@ -905,11 +905,10 @@ async function cloudSave(){
     DB._savedAt = new Date().toISOString();
     DB._savedBy = CU?.name||'System';
     
-    const resp = await fetch(APPS_SCRIPT_URL+'?action=write', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(DB),
-    });
+    // Use GET with encoded data — avoids CORS POST restrictions
+    const encoded = encodeURIComponent(JSON.stringify(DB));
+    const url = APPS_SCRIPT_URL+'?action=write&data='+encoded;
+    const resp = await fetch(url);
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     const result = await resp.json();
     if(!result.ok) throw new Error(result.message||'Save failed');
@@ -930,11 +929,11 @@ async function cloudSave(){
 async function uploadImageToDrive(base64Data, filename){
   if(!_cloudReady) return null;
   try{
-    const resp = await fetch(APPS_SCRIPT_URL+'?action=upload_image', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({imageData: base64Data, filename: filename||'bild_'+Date.now()+'.jpg'}),
-    });
+    const imgData = encodeURIComponent(base64Data);
+    const imgName = encodeURIComponent(filename||'bild_'+Date.now()+'.jpg');
+    const resp = await fetch(
+      APPS_SCRIPT_URL+'?action=upload_image&imageData='+imgData+'&filename='+imgName
+    );
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     const result = await resp.json();
     return result.ok ? result.url : null;
