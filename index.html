@@ -1011,14 +1011,24 @@ async function uploadImageToDrive(base64Data, filename){
   try{
     const compressed = await compressImage(base64Data, 0.5, 600);
     const fname = filename||'bild_'+Date.now()+'.jpg';
+
+    // Ladda upp via iframe (kringgår CORS)
     const payload = JSON.stringify({
       action: 'upload_image',
       imageData: compressed,
       filename: fname,
     });
     await sendViaIframe(APPS_SCRIPT_URL, payload);
-    // Returnera null — bild sparas i Drive/bilder men URL okänd
-    // Bilden visas lokalt som base64 tills SharePoint-migration
+
+    // Vänta 3 sekunder sedan hämta fil-URL via JSONP lookup
+    await new Promise(r=>setTimeout(r, 3000));
+    const result = await fetchViaScript(
+      APPS_SCRIPT_URL+'?action=lookup_image&filename='+encodeURIComponent(fname)
+    );
+    if(result.ok && result.url){
+      console.log('Image uploaded to Drive:', result.url);
+      return result.url;
+    }
     return null;
   }catch(e){
     console.error('Image upload error:',e);
