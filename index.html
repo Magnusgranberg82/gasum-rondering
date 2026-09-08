@@ -1002,8 +1002,8 @@ function showGDriveSetup(){
     +'</div>'
     +(connected
       ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
-        +'<button class="btn bp" onclick="cloudLoad().then(r=>toast(r?'✓ Hämtat!':'Inga nya data'))" style="font-size:12px">⬇ Hämta nu</button>'
-        +'<button class="btn bs" onclick="cloudSave().then(()=>toast('✓ Sparat!'))" style="font-size:12px">⬆ Spara nu</button>'
+        +'<button class="btn bp" onclick="cloudLoad().then(r=>toast(r?&quot;OK&quot;:&quot;Inga nya data&quot;))" style="font-size:12px">⬇ Hämta nu</button>'
+        +'<button class="btn bs" onclick="cloudSave().then(()=>toast(&quot;Sparat!&quot;))" style="font-size:12px">⬆ Spara nu</button>'
         +'<button class="btn bs" onclick="testCloudConn()" style="font-size:12px">🔌 Testa anslutning</button>'
         +'</div>'
       : '')
