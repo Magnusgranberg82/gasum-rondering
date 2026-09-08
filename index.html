@@ -2448,8 +2448,7 @@ function lbAddImgs(event){
   const files=Array.from(event.target.files);
   files.forEach(file=>{
     const reader=new FileReader();
-    document.getElementById('imp-preview').innerHTML='<div style="color:var(--mut);font-size:13px;padding:10px">⏳ Läser fil...</div>';
-  reader.onload=e=>{
+    reader.onload=e=>{
       _lbImgData.push(e.target.result);
       renderLbImgPreview();
     };
