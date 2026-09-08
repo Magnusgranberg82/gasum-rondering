@@ -945,14 +945,15 @@ async function cloudLoad(){
       if(!DB.sessions)    DB.sessions=[];
       DB.facilities.forEach(f=>{ if(!f.type) f.type='biogas'; });
 
-      // Restore local base64 images — cloud only has Drive URLs
+      // Merge images: local base64 bevaras alltid om moln saknar Drive-URL
       DB.logEntries = DB.logEntries.map(cloudEntry=>{
         const localEntry = localEntries.find(e=>e.id===cloudEntry.id);
         if(!localEntry) return cloudEntry;
-        // Merge images: prefer Drive URLs from cloud, keep local base64 if no cloud URL
-        const merged = (cloudEntry.images||[]).length > 0
-          ? cloudEntry.images  // cloud has URLs — use them
-          : (localEntry.images||[]);  // cloud has none — keep local
+        // Bygg bästa bildlistan: Drive-URL från moln + base64 lokalt som fallback
+        const cloudImgs = (cloudEntry.images||[]).filter(i=>i&&i.startsWith('http'));
+        const localImgs = (localEntry.images||[]);
+        // Om moln har Drive-URLs — använd dem, annars behåll lokala
+        const merged = cloudImgs.length > 0 ? cloudImgs : localImgs;
         return {...cloudEntry, images: merged};
       });
 
@@ -1048,7 +1049,9 @@ function compressImage(base64, quality=0.7, maxWidth=1200){
 function startCloudPoll(){
   if(_cloudPollTimer) clearInterval(_cloudPollTimer);
   _cloudPollTimer = setInterval(async()=>{
-    if(!_cloudSyncing&&document.visibilityState==='visible'){
+    // Skip poll if we just saved locally (within last 10 seconds)
+    const justSaved = window._lastLocalSave && (Date.now()-window._lastLocalSave < 10000);
+    if(!_cloudSyncing && !justSaved && document.visibilityState==='visible'){
       const updated = await cloudLoad();
       if(updated) toast('🔄 Data uppdaterad',2000);
     }
@@ -1306,6 +1309,7 @@ function storageLoad(){
   }catch{return null;}
 }
 function storageSave(){
+  window._lastLocalSave = Date.now(); // Grace period — prevent poll overwrite
   // Always update localStorage as offline cache
   try{
     const data=JSON.stringify(DB);
