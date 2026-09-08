@@ -1074,7 +1074,7 @@ async function gdriveLoad(){ return await cloudLoad(); }
 
 // ── SETUP WIZARD (JSONBin) ────────────────────────────────────────
 function showGDriveSetup(){
-  const el=document.getElementById('adm-settings');
+  const el=document.getElementById('adm-set');
   if(!el)return;
 
   const connected=USE_CLOUD || (JSONBIN_CONFIG.apiKey && JSONBIN_CONFIG.apiKey.length > 10);
