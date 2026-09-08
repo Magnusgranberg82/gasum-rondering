@@ -934,22 +934,29 @@ async function cloudSave(){
     DB._savedAt = new Date().toISOString();
     DB._savedBy = CU?.name||'System';
 
-    // Strip base64 images — only Drive URLs synkas, base64 är lokalt
+    // Strip base64 images — bara Drive URLs synkas
     const slim = JSON.parse(JSON.stringify(DB));
     slim.logEntries = (slim.logEntries||[]).map(e=>({
       ...e,
       images:(e.images||[]).filter(img=>typeof img==='string'&&img.startsWith('http'))
     }));
 
-    // POST — ingen URL-längdbegränsning
-    const resp = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({action:'write', data:slim}),
-    });
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
-    const result = await resp.json();
-    if(!result.ok) throw new Error(result.message||'Save failed');
+    // Chunked JSONP upload — delar upp stor data i bitar om 6000 tecken
+    const encoded = encodeURIComponent(JSON.stringify(slim));
+    const CHUNK   = 6000;
+    const total   = Math.ceil(encoded.length / CHUNK);
+    const sid     = Date.now().toString(36);
+
+    for(let i=0; i<total; i++){
+      const chunk = encoded.slice(i*CHUNK, (i+1)*CHUNK);
+      const url   = APPS_SCRIPT_URL+'?action=write'
+        +'&chunk='+chunk
+        +'&idx='+i+'&total='+total+'&sid='+sid;
+      const result = await fetchViaScript(url);
+      if(!result.ok) throw new Error(result.message||'Chunk '+i+' failed');
+      if(total > 1) cloudStatusUI('syncing','Sparar '+Math.round((i+1)/total*100)+'%...');
+    }
+    const result = {ok:true};
 
     _cloudLastSaved = new Date();
     try{ localStorage.setItem(SK, JSON.stringify(DB)); }catch{}
