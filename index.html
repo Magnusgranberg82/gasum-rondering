@@ -941,20 +941,23 @@ async function cloudSave(){
       images:(e.images||[]).filter(img=>typeof img==='string'&&img.startsWith('http'))
     }));
 
-    // Chunked JSONP upload — delar upp stor data i bitar om 6000 tecken
+    // Chunked JSONP — dela upp i bitar om 5000 tecken
     const encoded = encodeURIComponent(JSON.stringify(slim));
-    const CHUNK   = 6000;
+    const CHUNK   = 5000;
     const total   = Math.ceil(encoded.length / CHUNK);
     const sid     = Date.now().toString(36);
 
     for(let i=0; i<total; i++){
-      const chunk = encoded.slice(i*CHUNK, (i+1)*CHUNK);
-      const url   = APPS_SCRIPT_URL+'?action=write'
-        +'&chunk='+chunk
-        +'&idx='+i+'&total='+total+'&sid='+sid;
-      const result = await fetchViaScript(url);
-      if(!result.ok) throw new Error(result.message||'Chunk '+i+' failed');
-      if(total > 1) cloudStatusUI('syncing','Sparar '+Math.round((i+1)/total*100)+'%...');
+      const part = encoded.slice(i*CHUNK,(i+1)*CHUNK);
+      const url  = APPS_SCRIPT_URL
+        +'?action=chunk'
+        +'&part='+part
+        +'&idx='+i
+        +'&total='+total
+        +'&sid='+sid;
+      const res = await fetchViaScript(url);
+      if(!res.ok) throw new Error(res.message||'Chunk '+i+' misslyckades');
+      if(total>1) cloudStatusUI('syncing','Sparar '+(i+1)+'/'+total+'...');
     }
     const result = {ok:true};
 
