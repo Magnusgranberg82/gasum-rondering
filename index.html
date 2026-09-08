@@ -694,6 +694,7 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
         <div id="adm-imp" style="display:none"></div>
         <div id="adm-set" style="display:none"></div>
         <div id="adm-dat" style="display:none"></div>
+        <div id="adm-settings" style="display:none"></div>
       </div>
     </div>
 
@@ -984,102 +985,56 @@ async function gdriveSave(){ await cloudSave(); }
 async function gdriveLoad(){ return await cloudLoad(); }
 
 
-// ── SETUP WIZARD ───────────────────────────────────────────────────
+// ── SETUP WIZARD (JSONBin) ────────────────────────────────────────
 function showGDriveSetup(){
-  const el = document.getElementById('adm-settings');
-  if(!el) return;
-  el.innerHTML = `
-  <div class="card">
-    <div class="ctit">☁️ Google Drive — Inställningar</div>
-    <div style="background:var(--iBg);border:1px solid var(--info);border-radius:var(--rs);padding:11px 13px;margin-bottom:14px;font-size:12px;color:var(--info)">
-      ℹ Steg-för-steg-guide för att aktivera molnsynk. Görs en gång av administratören.
-    </div>
+  const el=document.getElementById('adm-settings');
+  if(!el)return;
 
-    <div style="margin-bottom:16px">
-      <div style="font-weight:700;margin-bottom:6px;font-size:13px">Steg 1 — Skapa Google Cloud-projekt</div>
-      <ol style="font-size:12px;color:var(--mut);padding-left:18px;line-height:1.8">
-        <li>Gå till <a href="https://console.cloud.google.com" target="_blank" style="color:var(--acc)">console.cloud.google.com</a></li>
-        <li>Skapa nytt projekt: <strong>Gasum Rondering</strong></li>
-        <li>Aktivera <strong>Google Drive API</strong></li>
-        <li>Skapa <strong>API-nyckel</strong> under Credentials</li>
-        <li>Skapa <strong>OAuth 2.0 Client ID</strong> (Web application)<br>
-            Authorized origins: <code style="background:var(--s2);padding:1px 5px;border-radius:3px">${location.origin}</code></li>
-      </ol>
-    </div>
+  const connected=USE_CLOUD&&JSONBIN_CONFIG.apiKey&&JSONBIN_CONFIG.binId;
+  const lastSaved=_cloudLastSaved?_cloudLastSaved.toLocaleString('sv-SE'):'Aldrig';
 
-    <div style="margin-bottom:16px">
-      <div style="font-weight:700;margin-bottom:6px;font-size:13px">Steg 2 — Skapa datafil i Google Drive</div>
-      <ol style="font-size:12px;color:var(--mut);padding-left:18px;line-height:1.8">
-        <li>Öppna Google Drive i ditt Google-konto</li>
-        <li>Skapa en ny fil: högerklicka → <strong>Ny fil → Google Dokument</strong></li>
-        <li>Döp om den till <strong>gasum_rondering_data.json</strong></li>
-        <li>Dela filen med alla 6 användare (eller gör den offentlig inom organisationen)</li>
-        <li>Kopiera filens ID från URL:en:<br>
-            <code style="background:var(--s2);padding:1px 5px;border-radius:3px;font-size:11px">drive.google.com/file/d/<strong>[FILE-ID]</strong>/view</code></li>
-      </ol>
-    </div>
-
-    <div style="margin-bottom:16px">
-      <div style="font-weight:700;margin-bottom:6px;font-size:13px">Steg 3 — Fyll i konfigurationen</div>
-      <div class="fld"><label>API-nyckel</label>
-        <input class="inp" id="cfg-apikey" placeholder="AIza..." value="${GDRIVE_CONFIG.apiKey}"></div>
-      <div class="fld"><label>OAuth Client ID</label>
-        <input class="inp" id="cfg-clientid" placeholder="xxxx.apps.googleusercontent.com" value="${GDRIVE_CONFIG.clientId}"></div>
-      <div class="fld"><label>Fil-ID (från Drive URL)</label>
-        <input class="inp" id="cfg-fileid" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" value="${GDRIVE_CONFIG.fileId}"></div>
-    </div>
-
-    <div style="background:var(--wBg);border:1px solid var(--warn);border-radius:var(--rs);padding:10px 13px;margin-bottom:12px;font-size:12px;color:#92400e">
-      ⚠ <strong>Viktigt:</strong> Konfigurationen sparas i HTML-filen. Du behöver uppdatera filen på GitHub efter att du fyllt i värdena nedan och exporterat.
-    </div>
-
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn bp" onclick="saveGDriveConfig()" style="font-size:13px">💾 Spara & aktivera</button>
-      <button class="btn bs" onclick="testGDriveConn()" style="font-size:12px">🔌 Testa anslutning</button>
-    </div>
-    <div id="gdrive-test-result" style="margin-top:10px"></div>
-  </div>
-
-  <div class="card">
-    <div class="ctit">☁️ Synkstatus</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <div id="gdrive-status-settings" style="margin-bottom:8px">
-        <span style="font-size:12px;color:var(--mut)">${USE_CLOUD ? '☁️ JSONBin molnsynk aktiverad · Bin: '+JSONBIN_CONFIG.binId.slice(-8) : '💾 Molnsynk ej konfigurerad'}</span>
-      </div>
-      ${USE_GDRIVE ? `
-      <div style="display:flex;gap:7px">
-        <button class="btn bs" onclick="gdriveLoad().then(()=>toast('✓ Hämtat från molnet!'))" style="font-size:11px">⬇ Hämta nu</button>
-        <button class="btn bp" onclick="gdriveSave()" style="font-size:11px">⬆ Spara nu</button>
-      </div>` : ''}
-    </div>
-    ${USE_GDRIVE ? `
-    <div style="margin-top:10px;font-size:12px;color:var(--mut)">
-      Automatisk synk: var 30:e sekund · Sparar direkt vid varje ändring
-    </div>` : ''}
-  </div>`;
+  el.innerHTML='<div class="card">'
+    +'<div class="ctit">☁️ Molnsynk — JSONBin</div>'
+    +'<div style="background:'+(connected?'var(--gBg)':'var(--wBg)')+';border:1px solid '+(connected?'var(--good)':'var(--warn)')+';border-radius:var(--rs);padding:11px 13px;margin-bottom:14px;font-size:13px;color:'+(connected?'var(--good)':'#92400e')+'">'
+    +(connected
+      ? '✅ Molnsynk aktiv · Bin: ...'+JSONBIN_CONFIG.binId.slice(-8)+'<br><span style="font-size:11px;color:var(--mut)">Senast sparad: '+lastSaved+'</span>'
+      : '⚠ Molnsynk ej konfigurerad — uppdatera config.js')
+    +'</div>'
+    +(connected
+      ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
+        +'<button class="btn bp" onclick="cloudLoad().then(r=>toast(r?'✓ Hämtat!':'Inga nya data'))" style="font-size:12px">⬇ Hämta nu</button>'
+        +'<button class="btn bs" onclick="cloudSave().then(()=>toast('✓ Sparat!'))" style="font-size:12px">⬆ Spara nu</button>'
+        +'<button class="btn bs" onclick="testCloudConn()" style="font-size:12px">🔌 Testa anslutning</button>'
+        +'</div>'
+      : '')
+    +'<div id="gdrive-test-result"></div>'
+    +'<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--brd)">'
+    +'<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--mut);margin-bottom:8px">Konfiguration</div>'
+    +'<div style="font-size:12px;color:var(--mut);margin-bottom:8px">Nycklar hanteras i <strong>config.js</strong> på GitHub — rör aldrig index.html för nycklar.</div>'
+    +'<div style="background:var(--s2);border-radius:var(--rs);padding:10px;font-family:monospace;font-size:11px;color:var(--mut)">'
+    +'apiKey: '+(JSONBIN_CONFIG.apiKey?'✓ Ifylld':'⚠ Saknas')+'<br>'
+    +'binId:  '+(JSONBIN_CONFIG.binId?'...'+JSONBIN_CONFIG.binId.slice(-8):'⚠ Saknas')
+    +'</div>'
+    +'</div>'
+    +'</div>'
+    +'<div class="card">'
+    +'<div class="ctit">📊 Datastatistik</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+    +[
+      [DB.facilities.length,'Anläggningar','var(--acc)'],
+      [DB.users.length,'Användare','var(--acc)'],
+      [DB.rounds.length,'Rondomgångar','var(--good)'],
+      [DB.sessions.length,'Genomförda ronder','var(--good)'],
+      [DB.logEntries.length,'Loggboksinlägg','var(--info)'],
+      [Math.round(JSON.stringify(DB).length/1024)+' KB','Datastorlek','var(--mut)'],
+    ].map(([v,l,c])=>'<div style="background:var(--s2);border-radius:var(--rs);padding:10px;text-align:center">'
+      +'<div style="font-size:20px;font-weight:700;color:'+c+'">'+v+'</div>'
+      +'<div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px">'+l+'</div>'
+      +'</div>').join('')
+    +'</div>'
+    +'</div>';
 }
 
-function saveGDriveConfig(){
-  const apiKey   = document.getElementById('cfg-apikey')?.value?.trim()||'';
-  const clientId = document.getElementById('cfg-clientid')?.value?.trim()||'';
-  const fileId   = document.getElementById('cfg-fileid')?.value?.trim()||'';
-  if(!apiKey||!clientId||!fileId){
-    toast('⚠ Fyll i alla tre fälten.');
-    return;
-  }
-  // Export new HTML with config filled in
-  const res = document.getElementById('gdrive-test-result');
-  res.innerHTML = `<div style="color:var(--mut);font-size:12px;margin-top:6px">
-    ℹ Konfig sparas inte direkt i webbläsaren — du behöver exportera en ny HTML-fil.<br>
-    Kopiera dessa värden och skicka till Magnus som uppdaterar filen:
-    <br><br>
-    <code style="background:var(--s2);padding:6px 10px;border-radius:4px;display:block;font-size:11px;margin-top:4px">
-    apiKey:   "${apiKey}"<br>
-    clientId: "${clientId}"<br>
-    fileId:   "${fileId}"
-    </code>
-  </div>`;
-}
 
 async function testCloudConn(){
   const res=document.getElementById('gdrive-test-result');
