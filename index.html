@@ -822,11 +822,13 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
 // Lämna som '' för att fortsätta använda lokal lagring (localStorage).
 // Se instruktionerna i Admin → Inställningar → Google Drive.
 // ══════════════════════════════════════════════════════════════════
-// GDRIVE_CONFIG laddas från config.js (se GitHub-repot)
+// JSONBIN_CONFIG laddas från config.js (se GitHub-repot)
 // Lägg ALDRIG in nycklar direkt här — använd config.js istället
-const GDRIVE_CONFIG = window.GDRIVE_CONFIG || { apiKey:'', fileId:'', clientId:'' };
+const JSONBIN_CONFIG = window.JSONBIN_CONFIG || { apiKey:'', binId:'' };
 
-const USE_GDRIVE = !!(GDRIVE_CONFIG.apiKey && GDRIVE_CONFIG.fileId && GDRIVE_CONFIG.clientId);
+const USE_CLOUD = !!(JSONBIN_CONFIG.apiKey && JSONBIN_CONFIG.binId);
+// Legacy Google Drive support (disabled)
+const USE_GDRIVE = false;
 
 // ── GOOGLE DRIVE SYNC STATE ────────────────────────────────────────
 let _gdriveReady    = false;
@@ -836,83 +838,55 @@ let _gdrivePollTimer = null;
 let _gdriveLastSaved = null;
 let _gdriveConflict  = false;
 
-// ── LOAD GOOGLE APIs ───────────────────────────────────────────────
-if(USE_GDRIVE){
-  const s1 = document.createElement('script');
-  s1.src = 'https://apis.google.com/js/api.js';
-  s1.onload = () => gapi.load('client', initGDrive);
-  document.head.appendChild(s1);
-  const s2 = document.createElement('script');
-  s2.src = 'https://accounts.google.com/gsi/client';
-  document.head.appendChild(s2);
-}
-
-async function initGDrive(){
-  try{
-    await gapi.client.init({
-      apiKey: GDRIVE_CONFIG.apiKey,
-      discoveryDocs:['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-    });
-    _gdriveReady = true;
-    console.log('Google Drive API ready');
-    showDriveSpinner('Ansluter till Google Drive...');
-    // Authenticate and load data
-    await gdriveAuth();
-    hideDriveSpinner();
-  }catch(e){
-    console.error('GDrive init error:', e);
-    gdriveStatusUI('error', 'Google Drive-fel: ' + e.message);
-  }
-}
-
-function gdriveAuth(){
-  return new Promise((resolve)=>{
-    const client = google.accounts.oauth2.initTokenClient({
-      client_id: GDRIVE_CONFIG.clientId,
-      scope: 'https://www.googleapis.com/auth/drive.file',
-      callback: async (resp)=>{
-        if(resp.error){ console.error('GDrive auth error:', resp); resolve(); return; }
-        _gdriveToken = resp.access_token;
-        gapi.client.setToken({access_token: _gdriveToken});
-        gdriveStatusUI('ok', 'Google Drive ansluten');
-        // Load cloud data on auth — Drive is primary
-        await gdriveLoad();
-        // Process any saves that queued during auth
-        if(window._pendingDriveSave){
-          window._pendingDriveSave=false;
-          await gdriveSave();
-        }
-        // Start polling for changes every 30 seconds
-        startGDrivePoll();
-        resolve();
-      }
-    });
-    client.requestAccessToken({prompt:''});
+// ── INIT JSONBIN SYNC ──────────────────────────────────────────────
+if(USE_CLOUD){
+  // No external scripts needed — pure fetch API
+  window.addEventListener('load', ()=>{
+    setTimeout(initJsonBin, 500); // slight delay after app loads
   });
 }
 
-// ── CLOUD LOAD — Drive is authoritative ───────────────────────────
-async function gdriveLoad(){
-  if(!_gdriveReady || !_gdriveToken) return false;
+// ══ JSONBIN CLOUD SYNC ════════════════════════════════════════════
+// No OAuth, no popup — just an API key
+// All users share the same bin
+
+let _cloudReady    = false;
+let _cloudSyncing  = false;
+let _cloudLastSaved = null;
+let _cloudPollTimer = null;
+
+async function initJsonBin(){
+  if(!USE_CLOUD) return;
+  _cloudReady = true;
+  cloudStatusUI('syncing','Ansluter...');
+  await cloudLoad();
+  startCloudPoll();
+}
+
+// ── CLOUD LOAD ─────────────────────────────────────────────────────
+async function cloudLoad(){
+  if(!_cloudReady || _cloudSyncing) return false;
   try{
-    gdriveStatusUI('syncing','Hämtar från molnet...');
-    // Use fetch directly — more reliable than gapi client for media
+    cloudStatusUI('syncing','Hämtar...');
     const resp = await fetch(
-      'https://www.googleapis.com/drive/v3/files/'+GDRIVE_CONFIG.fileId+'?alt=media',
-      {headers:{'Authorization':'Bearer '+_gdriveToken}}
+      'https://api.jsonbin.io/v3/b/'+JSONBIN_CONFIG.binId+'/latest',
+      { headers:{
+          'X-Access-Key': JSONBIN_CONFIG.apiKey,
+          'X-Bin-Meta': 'false',
+        }
+      }
     );
     if(!resp.ok) throw new Error('HTTP '+resp.status);
-    const text = await resp.text();
-    // Empty file — push local data up on first run
-    if(!text||text.trim()===''||text.trim()==='{}'||text.trim()==='null'){
-      gdriveStatusUI('syncing','Tom fil — laddar upp lokal data...');
-      await gdriveSave();
+    const cloudData = await resp.json();
+
+    if(!cloudData||!cloudData.facilities){
+      // Empty or first run — push local data up
+      cloudStatusUI('syncing','Laddar upp lokal data...');
+      await cloudSave();
       return false;
     }
-    const cloudData = JSON.parse(text);
-    if(!cloudData||!cloudData.facilities) return false;
 
-    // Drive wins if newer or same age — it is the primary source
+    // Timestamp comparison — cloud wins if newer or equal
     const localTs = DB._savedAt ? new Date(DB._savedAt) : new Date(0);
     const cloudTs = cloudData._savedAt ? new Date(cloudData._savedAt) : new Date(0);
 
@@ -923,92 +897,91 @@ async function gdriveLoad(){
       if(!DB.rounds)      DB.rounds=[];
       if(!DB.sessions)    DB.sessions=[];
       DB.facilities.forEach(f=>{ if(!f.type) f.type='biogas'; });
-      // Update localStorage cache
       try{ localStorage.setItem(SK, JSON.stringify(DB)); }catch{}
-      gdriveStatusUI('ok','☁️ '+new Date().toLocaleTimeString('sv-SE'));
-      console.log('Drive loaded, ts:', cloudTs);
+      cloudStatusUI('ok','☁️ '+new Date().toLocaleTimeString('sv-SE'));
+      // Refresh UI if logged in
+      if(CU) renderHomeBadges();
       return true;
     } else {
-      // Local is newer — push up to Drive
-      gdriveStatusUI('syncing','Lokal data är nyare — laddar upp...');
-      await gdriveSave();
+      cloudStatusUI('syncing','Lokal data är nyare...');
+      await cloudSave();
       return false;
     }
   }catch(e){
-    console.error('GDrive load error:',e);
-    gdriveStatusUI('warn','⚠ Offline — lokal kopia');
+    console.error('Cloud load error:',e);
+    cloudStatusUI('warn','⚠ Offline');
     return false;
   }
 }
 
 // ── CLOUD SAVE ─────────────────────────────────────────────────────
-async function gdriveSave(){
-  if(!_gdriveReady || !_gdriveToken || _gdriveSyncing) return;
-  _gdriveSyncing = true;
-  gdriveStatusUI('syncing', 'Sparar...');
+async function cloudSave(){
+  if(!_cloudReady || _cloudSyncing) return;
+  _cloudSyncing = true;
+  cloudStatusUI('syncing','Sparar...');
   try{
     DB._savedAt = new Date().toISOString();
-    DB._savedBy = CU?.name || 'Okänd';
-    const content = JSON.stringify(DB, null, 2);
-
-    // Simple media upload — works with any file type including plain files
+    DB._savedBy = CU?.name || 'System';
     const resp = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files/'+GDRIVE_CONFIG.fileId+'?uploadType=media',
+      'https://api.jsonbin.io/v3/b/'+JSONBIN_CONFIG.binId,
       {
-        method:'PATCH',
+        method: 'PUT',
         headers:{
-          'Authorization': 'Bearer '+_gdriveToken,
           'Content-Type': 'application/json',
+          'X-Access-Key': JSONBIN_CONFIG.apiKey,
         },
-        body: content,
+        body: JSON.stringify(DB),
       }
     );
     if(resp.ok){
-      _gdriveLastSaved = new Date();
-      gdriveStatusUI('ok','☁️ Sparad '+_gdriveLastSaved.toLocaleTimeString('sv-SE'));
+      _cloudLastSaved = new Date();
+      try{ localStorage.setItem(SK, JSON.stringify(DB)); }catch{}
+      cloudStatusUI('ok','☁️ '+_cloudLastSaved.toLocaleTimeString('sv-SE'));
     } else {
-      const err = await resp.json().catch(()=>({error:{message:resp.status}}));
-      const msg = err?.error?.message || resp.status;
-      // If 403/404 — likely wrong file type, show helpful message
-      if(resp.status===403||resp.status===404){
-        gdriveStatusUI('error','⚠ Fel fil-typ — se instruktioner i Admin → Inställningar');
-      } else {
-        throw new Error(msg);
-      }
+      const err = await resp.json().catch(()=>({}));
+      throw new Error(err.message||resp.status);
     }
   }catch(e){
-    console.error('GDrive save error:', e);
-    gdriveStatusUI('error', 'Fel vid sparning: '+e.message);
+    console.error('Cloud save error:',e);
+    cloudStatusUI('error','⚠ Fel: '+e.message);
+    window._pendingCloudSave = true;
   }
-  _gdriveSyncing = false;
+  _cloudSyncing = false;
 }
 
-// ── POLLING — check for remote changes ────────────────────────────
-function startGDrivePoll(){
-  if(_gdrivePollTimer) clearInterval(_gdrivePollTimer);
-  _gdrivePollTimer = setInterval(async ()=>{
-    if(!_gdriveSyncing && document.visibilityState==='visible'){
-      const updated = await gdriveLoad();
-      if(updated) toast('🔄 Data uppdaterad från molnet', 3000);
+// ── POLLING ─────────────────────────────────────────────────────────
+function startCloudPoll(){
+  if(_cloudPollTimer) clearInterval(_cloudPollTimer);
+  _cloudPollTimer = setInterval(async()=>{
+    if(!_cloudSyncing && document.visibilityState==='visible'){
+      const updated = await cloudLoad();
+      if(updated) toast('🔄 Data uppdaterad',2000);
     }
-  }, 20000); // Poll every 20 seconds
+  }, 20000);
 }
 
-// ── STATUS UI ─────────────────────────────────────────────────────
-function gdriveStatusUI(status, msg){
+// ── STATUS UI ──────────────────────────────────────────────────────
+function cloudStatusUI(status, msg){
+  // Update header status
   const el = document.getElementById('gdrive-status');
   if(!el) return;
   const colors = {ok:'#86efac',syncing:'#93c5fd',warn:'#fde68a',error:'#fca5a5'};
   const icons  = {ok:'☁️',syncing:'🔄',warn:'⚠️',error:'❌'};
-  el.innerHTML='<span style="color:'+( colors[status]||'rgba(255,255,255,.4)')+';font-size:10px;font-weight:600">'+(icons[status]||'')+' '+msg+'</span>';
-  // If offline/error show toast once
-  if(status==='error'&&!window._driveErrToasted){
-    window._driveErrToasted=true;
-    toast('⚠ Google Drive ej tillgänglig — arbetar offline',4000);
-    setTimeout(()=>window._driveErrToasted=false, 60000);
+  el.innerHTML='<span style="color:'+(colors[status]||'rgba(255,255,255,.4)')+';font-size:10px;font-weight:600">'
+    +(icons[status]||'')+' '+msg+'</span>';
+  if(status==='error'&&!window._cloudErrToasted){
+    window._cloudErrToasted=true;
+    toast('⚠ Kunne inte spara till molnet',4000);
+    setTimeout(()=>window._cloudErrToasted=false,60000);
   }
-  if(status==='ok') window._driveErrToasted=false;
+  if(status==='ok') window._cloudErrToasted=false;
 }
+
+// Legacy aliases for compatibility
+function gdriveStatusUI(s,m){ cloudStatusUI(s,m); }
+async function gdriveSave(){ await cloudSave(); }
+async function gdriveLoad(){ return await cloudLoad(); }
+
 
 // ── SETUP WIZARD ───────────────────────────────────────────────────
 function showGDriveSetup(){
@@ -1248,13 +1221,12 @@ function storageSave(){
   }catch(e){
     if(e.name==='QuotaExceededError') toast('⚠ Lokal lagring full!',5000);
   }
-  // Drive is primary — save immediately (debounced 1.5s)
-  if(USE_GDRIVE && _gdriveReady && _gdriveToken){
-    clearTimeout(window._gdriveSaveTimer);
-    window._gdriveSaveTimer=setTimeout(gdriveSave, 1500);
-  } else if(USE_GDRIVE && !_gdriveToken){
-    // Not authenticated yet — queue for when auth completes
-    window._pendingDriveSave = true;
+  // Cloud sync — save immediately (debounced 1.5s)
+  if(USE_CLOUD && _cloudReady){
+    clearTimeout(window._cloudSaveTimer);
+    window._cloudSaveTimer=setTimeout(cloudSave, 1500);
+  } else if(USE_CLOUD && !_cloudReady){
+    window._pendingCloudSave = true;
   }
 }
 function arcLoad(){try{const d=localStorage.getItem(SK_ARC);return d?JSON.parse(d):[];}catch{return[];}}
@@ -1574,13 +1546,13 @@ function homeGo(tab){
 let _appShellReady = false;
 function initAppShell(){
   // Add GDrive status indicator to header if configured
-  if(USE_GDRIVE){
+  if(USE_CLOUD){
     const hright = document.querySelector('.hright');
     if(hright && !document.getElementById('gdrive-status')){
       const statusDiv = document.createElement('div');
       statusDiv.id = 'gdrive-status';
       statusDiv.style.cssText = 'font-size:10px;color:rgba(255,255,255,.5);margin-right:8px;white-space:nowrap';
-      statusDiv.innerHTML = '☁️ Ansluter...';
+      statusDiv.innerHTML = '☁️ ...';
       hright.insertBefore(statusDiv, hright.firstChild);
     }
   }

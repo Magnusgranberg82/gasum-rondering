@@ -1,35 +1,22 @@
 // ══════════════════════════════════════════════════════════════════
 // GASUM RONDERING — KONFIGURATION
 // ══════════════════════════════════════════════════════════════════
-// Denna fil innehåller dina privata nycklar för Google Drive-synk.
+// Denna fil innehåller API-nyckeln för molnsynk via JSONBin.io
 //
 // VIKTIGT:
-//   - Ladda ALDRIG upp denna fil till ett publikt GitHub-repo
-//     utan att ha fyllt i dina riktiga nycklar
-//   - Om du av misstag publicerar nycklar — återkalla dem direkt
-//     i Google Cloud Console och skapa nya
 //   - Filen behöver bara skapas/ändras EN gång
 //   - När appen (index.html) uppdateras berörs inte denna fil
-//
-// Instruktioner:
-//   1. Ersätt värdena nedan med dina riktiga nycklar
-//   2. Spara filen
-//   3. Ladda upp till GitHub (samma mapp som index.html)
-//   4. Klart — appen hämtar nycklarna automatiskt
+//   - Dela inte nyckeln offentligt
 // ══════════════════════════════════════════════════════════════════
 
-window.GDRIVE_CONFIG = {
+window.JSONBIN_CONFIG = {
 
-  // Google API-nyckel
-  // Hämtas från: console.cloud.google.com → APIs & Services → Credentials
-  apiKey: 'AIzaSyA5sviIoPYGwagJnp8JX9-0iZQKfQYM9wk',
+  // JSONBin API-nyckel
+  // Hämtas från: jsonbin.io → API Keys
+  apiKey: '$2a$10$4THOyhQVYcQKyi0yRDUz7ezt8f59.6vvyF9o9EZi8CkX4erIyxFaS',
 
-  // Google Drive Fil-ID (JSON-datafilen)
-  // Hämtas från URL:en i Google Drive: /d/[DETTA_ÄR_FIL_ID]/
-  fileId: '1O0E4qfploBgyWRscUaPHEwkGUz29AjFx',
-
-  // OAuth 2.0 Client ID
-  // Hämtas från: console.cloud.google.com → APIs & Services → Credentials
-  clientId: '213880128400-qt8suoc80nles038b63tjrfdhn1mb9ui.apps.googleusercontent.com',
+  // JSONBin Bin ID
+  // Hämtas från URL:en när du skapar en bin: jsonbin.io/b/[BIN-ID]
+  binId: '6a9fa956ac6210605ab25353',
 
 };
