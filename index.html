@@ -842,7 +842,7 @@ let _dataFileId     = null;
 
 const DRIVE_FOLDER_ID = '1I_d70G4YZtvOHTD1XUxQaH8bfE1VWi8X';
 const DATA_FILENAME   = 'gasum_data.json';
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzrPi9rbsyEDydfC82hkuPbt9rI8kNRdvzPW87R37qCHFEnuNJLPWbgMqRtB00tLzIHYg/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyea4Rbg6dZe1krex0ZJ9KFgVp4OkqIV4ico67mabNnhcPb7tMhXaJe1Hw1w6CBYE6V1w/exec';
 
 // ── JSONP via script tag — bypasses CORS completely ───────────────
 function fetchViaScript(url){
@@ -1012,7 +1012,7 @@ async function uploadImageToDrive(base64Data, filename){
     const compressed = await compressImage(base64Data, 0.5, 600);
     const fname = filename||'bild_'+Date.now()+'.jpg';
 
-    // Ladda upp via iframe (kringgår CORS)
+    // Ladda upp via iframe
     const payload = JSON.stringify({
       action: 'upload_image',
       imageData: compressed,
@@ -1020,15 +1020,24 @@ async function uploadImageToDrive(base64Data, filename){
     });
     await sendViaIframe(APPS_SCRIPT_URL, payload);
 
-    // Vänta 3 sekunder sedan hämta fil-URL via JSONP lookup
-    await new Promise(r=>setTimeout(r, 3000));
-    const result = await fetchViaScript(
-      APPS_SCRIPT_URL+'?action=lookup_image&filename='+encodeURIComponent(fname)
+    // Vänta 4 sekunder
+    await new Promise(r=>setTimeout(r, 4000));
+
+    // Sök efter filen direkt via Drive API med API-nyckel
+    const apiKey = JSONBIN_CONFIG.apiKey;
+    const folderId = '1p_R3WpPgXoTE56zIXMYXJghxC0--YBq8';
+    const q = encodeURIComponent('"'+folderId+'" in parents and name="'+fname+'" and trashed=false');
+    const resp = await fetch(
+      'https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)&key='+apiKey
     );
-    if(result.ok && result.url){
-      console.log('Image uploaded to Drive:', result.url);
-      return result.url;
+    if(!resp.ok) throw new Error('Drive API: '+resp.status);
+    const data = await resp.json();
+    if(data.files && data.files.length > 0){
+      const url = 'https://drive.google.com/uc?id='+data.files[0].id;
+      console.log('Image found in Drive:', url);
+      return url;
     }
+    console.warn('Image not found in Drive yet');
     return null;
   }catch(e){
     console.error('Image upload error:',e);
