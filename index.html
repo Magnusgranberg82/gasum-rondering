@@ -934,31 +934,22 @@ async function cloudSave(){
     DB._savedAt = new Date().toISOString();
     DB._savedBy = CU?.name||'System';
 
-    const encoded = encodeURIComponent(JSON.stringify(DB));
+    // Strip base64 images — only Drive URLs synkas, base64 är lokalt
+    const slim = JSON.parse(JSON.stringify(DB));
+    slim.logEntries = (slim.logEntries||[]).map(e=>({
+      ...e,
+      images:(e.images||[]).filter(img=>typeof img==='string'&&img.startsWith('http'))
+    }));
 
-    // Check URL length — JSONP has ~8000 char limit
-    const url = APPS_SCRIPT_URL+'?action=write&data='+encoded;
-    if(url.length > 7500){
-      // Data too large for URL — save compressed version
-      // Strip base64 images from logEntries before sending
-      const slim = JSON.parse(JSON.stringify(DB));
-      // Strip base64 images — keep Drive URLs (they start with https://)
-      slim.logEntries = (slim.logEntries||[]).map(e=>({
-        ...e,
-        images:(e.images||[]).filter(img=>typeof img==='string'&&img.startsWith('http'))
-      }));
-      const enc2 = encodeURIComponent(JSON.stringify(slim));
-      const url2 = APPS_SCRIPT_URL+'?action=write&data='+enc2;
-      if(url2.length > 7500){
-        throw new Error('Data för stor för synk — exportera och rensa gammal data');
-      }
-      const result = await fetchViaScript(url2);
-      if(!result.ok) throw new Error(result.message||'Save failed');
-      toast('⚠ Bilder sparas bara lokalt (data för stor)',4000);
-    } else {
-      const result = await fetchViaScript(url);
-      if(!result.ok) throw new Error(result.message||'Save failed');
-    }
+    // POST — ingen URL-längdbegränsning
+    const resp = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({action:'write', data:slim}),
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const result = await resp.json();
+    if(!result.ok) throw new Error(result.message||'Save failed');
 
     _cloudLastSaved = new Date();
     try{ localStorage.setItem(SK, JSON.stringify(DB)); }catch{}
@@ -976,16 +967,19 @@ async function cloudSave(){
 async function uploadImageToDrive(base64Data, filename){
   if(!_cloudReady) return null;
   try{
-    // Compress image before upload if it's large
+    // Compress before upload
     const compressed = await compressImage(base64Data, 0.7, 1200);
-    const imgData = encodeURIComponent(compressed);
-    const imgName = encodeURIComponent(filename||'bild_'+Date.now()+'.jpg');
-    const url = APPS_SCRIPT_URL+'?action=upload_image&imageData='+imgData+'&filename='+imgName;
-    if(url.length > 7500){
-      console.warn('Image too large for upload, keeping as base64');
-      return null;
-    }
-    const result = await fetchViaScript(url);
+    const resp = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        action: 'upload_image',
+        imageData: compressed,
+        filename: filename||'bild_'+Date.now()+'.jpg',
+      }),
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const result = await resp.json();
     return result.ok ? result.url : null;
   }catch(e){
     console.error('Image upload error:',e);
