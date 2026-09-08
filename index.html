@@ -2474,31 +2474,39 @@ async function lbSubmit(){
     authorName:CU?.name||'Okänd',
   };
 
-  // Upload images to Drive if cloud is ready, otherwise keep as base64
-  if(_lbImgData.length){
-    if(USE_CLOUD && _cloudReady){
-      toast('⏳ Laddar upp bilder...',3000);
-      const urls = await Promise.all(_lbImgData.map(async(b64,i)=>{
-        const url = await uploadImageToDrive(b64,'lb_'+entry.id+'_'+i+'.jpg');
-        return url || b64; // fallback to base64 if upload fails
-      }));
-      entry.images = urls;
-    } else {
-      // No cloud — store as base64 locally
-      entry.images = [..._lbImgData];
-    }
-  }
-
+  // Always save base64 locally first so entry is never lost
+  entry.images = [..._lbImgData];
   DB.logEntries.unshift(entry);
   storageSave();
   lbClearForm();
   lbPopUserFilter();
   _lbPage=1;
-  // Go to list to show the new entry
   goTab('lb-list');
   renderLb();
   toast('✓ Inlägg sparat!');
   window.scrollTo({top:0,behavior:'smooth'});
+
+  // Then try to upload images to Drive in background
+  if(_lbImgData.length && USE_CLOUD && _cloudReady){
+    setTimeout(async()=>{
+      try{
+        const urls = await Promise.all(entry.images.map(async(b64,i)=>{
+          if(b64.startsWith('http')) return b64; // already a URL
+          const url = await uploadImageToDrive(b64,'lb_'+entry.id+'_'+i+'.jpg');
+          return url || b64;
+        }));
+        // Update entry with Drive URLs
+        const idx = DB.logEntries.findIndex(e=>e.id===entry.id);
+        if(idx>=0){
+          DB.logEntries[idx].images = urls;
+          storageSave();
+          toast('☁️ Bilder uppladdade till Drive',2000);
+        }
+      }catch(e){
+        console.error('Background image upload failed:',e);
+      }
+    }, 1000);
+  }
 }
 
 function deleteLbEntry(id){
