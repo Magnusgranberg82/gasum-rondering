@@ -938,8 +938,16 @@ async function cloudLoad(){
     const cloudTs = cloudData._savedAt ? new Date(cloudData._savedAt) : new Date(0);
     
     if(cloudTs >= localTs){
-      // Merge — keep local base64 images that cloud doesn't have
-      const localEntries = DB.logEntries || [];
+      // Hämta lokala bilder från localStorage innan vi skriver över DB
+      let localEntries = [];
+      try{
+        const localRaw = localStorage.getItem(SK);
+        if(localRaw){
+          const localDb = JSON.parse(localRaw);
+          localEntries = localDb.logEntries || [];
+        }
+      }catch{}
+
       DB = cloudData;
       if(!DB.workPermits) DB.workPermits=[];
       if(!DB.logEntries)  DB.logEntries=[];
@@ -947,14 +955,13 @@ async function cloudLoad(){
       if(!DB.sessions)    DB.sessions=[];
       DB.facilities.forEach(f=>{ if(!f.type) f.type='biogas'; });
 
-      // Merge images: local base64 bevaras alltid om moln saknar Drive-URL
+      // Merge bilder — bevara lokala bilder (base64 eller Drive-URL)
       DB.logEntries = DB.logEntries.map(cloudEntry=>{
         const localEntry = localEntries.find(e=>e.id===cloudEntry.id);
         if(!localEntry) return cloudEntry;
-        // Bygg bästa bildlistan: Drive-URL från moln + base64 lokalt som fallback
         const cloudImgs = (cloudEntry.images||[]).filter(i=>i&&i.startsWith('http'));
         const localImgs = (localEntry.images||[]);
-        // Om moln har Drive-URLs — använd dem, annars behåll lokala
+        // Prioritet: Drive-URLs från molnet > lokala bilder
         const merged = cloudImgs.length > 0 ? cloudImgs : localImgs;
         return {...cloudEntry, images: merged};
       });
@@ -1069,7 +1076,7 @@ function startCloudPoll(){
   if(_cloudPollTimer) clearInterval(_cloudPollTimer);
   _cloudPollTimer = setInterval(async()=>{
     // Skip poll if we just saved locally (within last 10 seconds)
-    const justSaved = window._lastLocalSave && (Date.now()-window._lastLocalSave < 10000);
+    const justSaved = window._lastLocalSave && (Date.now()-window._lastLocalSave < 30000);
     if(!_cloudSyncing && !justSaved && document.visibilityState==='visible'){
       const updated = await cloudLoad();
       if(updated) toast('🔄 Data uppdaterad',2000);
