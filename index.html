@@ -1077,27 +1077,26 @@ function showGDriveSetup(){
   const el=document.getElementById('adm-settings');
   if(!el)return;
 
-  const connected=USE_CLOUD&&JSONBIN_CONFIG.apiKey&&JSONBIN_CONFIG.binId;
+  const connected=USE_CLOUD || (JSONBIN_CONFIG.apiKey && JSONBIN_CONFIG.apiKey.length > 10);
   const lastSaved=_cloudLastSaved?_cloudLastSaved.toLocaleString('sv-SE'):'Aldrig';
 
   el.innerHTML='<div class="card">'
-    +'<div class="ctit">☁️ Molnsynk — JSONBin</div>'
+    +'<div class="ctit">☁️ Google Drive — Molnsynk</div>'
     +'<div style="background:'+(connected?'var(--gBg)':'var(--wBg)')+';border:1px solid '+(connected?'var(--good)':'var(--warn)')+';border-radius:var(--rs);padding:11px 13px;margin-bottom:14px;font-size:13px;color:'+(connected?'var(--good)':'#92400e')+'">'
     +(connected
-      ? '✅ Molnsynk aktiv · Bin: ...'+JSONBIN_CONFIG.binId.slice(-8)+'<br><span style="font-size:11px;color:var(--mut)">Senast sparad: '+lastSaved+'</span>'
-      : '⚠ Molnsynk ej konfigurerad — uppdatera config.js')
+      ? '✅ API-nyckel konfigurerad<br><span style="font-size:11px;color:var(--mut)">Mapp-ID: '+DRIVE_FOLDER_ID+'<br>Senast sparad: '+lastSaved+'</span>'
+      : '⚠ API-nyckel saknas — fyll i config.js')
     +'</div>'
-    +(connected
-      ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
-        +'<button class="btn bp" onclick="cloudLoad().then(r=>toast(r?&quot;OK&quot;:&quot;Inga nya data&quot;))" style="font-size:12px">⬇ Hämta nu</button>'
-        +'<button class="btn bs" onclick="cloudSave().then(()=>toast(&quot;Sparat!&quot;))" style="font-size:12px">⬆ Spara nu</button>'
-        +'<button class="btn bs" onclick="testCloudConn()" style="font-size:12px">🔌 Testa anslutning</button>'
-        +'</div>'
-      : '')
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
+    +'<button class="btn bp" onclick="cloudLoad().then(r=>toast(r?\'✓ Hämtat!\':\'Inga nya data\'))" style="font-size:12px">⬇ Hämta nu</button>'
+    +'<button class="btn bs" onclick="cloudSave().then(()=>toast(\'✓ Sparat!\'))" style="font-size:12px">⬆ Spara nu</button>'
+    +'<button class="btn bs" onclick="testCloudConn()" style="font-size:12px">🔌 Testa anslutning</button>'
+    +'<a class="btn bs" href="https://drive.google.com/drive/folders/'+DRIVE_FOLDER_ID+'" target="_blank" style="font-size:12px;text-decoration:none">📂 Öppna Drive</a>'
+    +'</div>'
     +'<div id="gdrive-test-result"></div>'
     +'<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--brd)">'
     +'<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--mut);margin-bottom:8px">Konfiguration</div>'
-    +'<div style="font-size:12px;color:var(--mut);margin-bottom:8px">Nycklar hanteras i <strong>config.js</strong> på GitHub — rör aldrig index.html för nycklar.</div>'
+    +'<div style="font-size:12px;color:var(--mut);margin-bottom:8px">API-nyckeln hanteras i <strong>config.js</strong> på GitHub.</div>'
     +'<div style="background:var(--s2);border-radius:var(--rs);padding:10px;font-family:monospace;font-size:11px;color:var(--mut)">'
     +'apiKey: '+(JSONBIN_CONFIG.apiKey?'✓ Ifylld':'⚠ Saknas')+'<br>'
     +'Mapp:  <a href="https://drive.google.com/drive/folders/'+DRIVE_FOLDER_ID+'" target="_blank" style="color:var(--acc)">Öppna i Drive</a>'
@@ -1125,23 +1124,37 @@ function showGDriveSetup(){
 
 async function testCloudConn(){
   const res=document.getElementById('gdrive-test-result');
-  if(res) res.innerHTML='<span style="color:var(--mut);font-size:12px">🔄 Testar...</span>';
+  if(res) res.innerHTML='<span style="color:var(--mut);font-size:12px">🔄 Testar Drive-anslutning...</span>';
   try{
-    const resp=await fetch(
-      'https://api.jsonbin.io/v3/b/'+JSONBIN_CONFIG.binId+'/latest',
-      {headers:{'X-Access-Key':JSONBIN_CONFIG.apiKey,'X-Bin-Meta':'false'}}
+    const apiKey = JSONBIN_CONFIG.apiKey;
+    if(!apiKey||apiKey.length<10){
+      if(res) res.innerHTML='<span style="color:var(--bad);font-size:12px">⚠ API-nyckel saknas i config.js</span>';
+      return;
+    }
+    // Test 1: Can we read the folder?
+    const q = encodeURIComponent('"'+DRIVE_FOLDER_ID+'" in parents and trashed=false');
+    const resp = await fetch(
+      'https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name,size,modifiedTime)&key='+apiKey
     );
-    const data=await resp.json();
-    if(resp.ok){
-      const msg=data.facilities
-        ?'✓ Anslutning OK! '+data.facilities.length+' anläggningar, '
-          +data.users?.length+' användare, '
-          +(data._savedAt?'Senast sparad: '+new Date(data._savedAt).toLocaleString('sv-SE'):'')
-        :'✓ Ansluten men bin är tom';
-      if(res) res.innerHTML='<span style="color:var(--good);font-size:12px">'+msg+'</span>';
-    } else {
-      const err=data.message||data.error||resp.status;
-      if(res) res.innerHTML='<span style="color:var(--bad);font-size:12px">✗ Fel: '+err+'</span>';
+    const data = await resp.json();
+    if(!resp.ok){
+      if(res) res.innerHTML='<span style="color:var(--bad);font-size:12px">✗ Fel: '+(data?.error?.message||resp.status)+'</span>';
+      return;
+    }
+    const files = data.files||[];
+    const dataFile = files.find(f=>f.name===DATA_FILENAME);
+    const fileList = files.map(f=>f.name).join(', ')||'(tom mapp)';
+    
+    const statusMsg = '✓ Drive-mapp nådd!'
+      +(dataFile?' · Datafil hittad ('+Math.round((dataFile.size||0)/1024)+' KB)'
+                :' · Ingen datafil än (skapas vid första sparning)')
+      +'<br><small style="color:var(--mut)">Filer i mappen: '+fileList+'</small>';
+    
+    if(res) res.innerHTML='<div style="color:var(--good);font-size:12px;padding:8px 0">'+statusMsg+'</div>';
+    
+    // Update file ID if found
+    if(dataFile && !_dataFileId){
+      _dataFileId = dataFile.id;
     }
   }catch(e){
     if(res) res.innerHTML='<span style="color:var(--bad);font-size:12px">✗ Nätverksfel: '+e.message+'</span>';
