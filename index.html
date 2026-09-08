@@ -928,15 +928,29 @@ async function cloudSave(){
   try{
     DB._savedAt = new Date().toISOString();
     DB._savedBy = CU?.name||'System';
-    
-    // Use GET with encoded data — avoids CORS POST restrictions
+
     const encoded = encodeURIComponent(JSON.stringify(DB));
+
+    // Check URL length — JSONP has ~8000 char limit
     const url = APPS_SCRIPT_URL+'?action=write&data='+encoded;
-    const resp = await fetch(url);
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
-    const result = await resp.json();
-    if(!result.ok) throw new Error(result.message||'Save failed');
-    
+    if(url.length > 7500){
+      // Data too large for URL — save compressed version
+      // Strip base64 images from logEntries before sending
+      const slim = JSON.parse(JSON.stringify(DB));
+      slim.logEntries = (slim.logEntries||[]).map(e=>({...e, images:[]}));
+      const enc2 = encodeURIComponent(JSON.stringify(slim));
+      const url2 = APPS_SCRIPT_URL+'?action=write&data='+enc2;
+      if(url2.length > 7500){
+        throw new Error('Data för stor för synk — exportera och rensa gammal data');
+      }
+      const result = await fetchViaScript(url2);
+      if(!result.ok) throw new Error(result.message||'Save failed');
+      toast('⚠ Bilder sparas bara lokalt (data för stor)',4000);
+    } else {
+      const result = await fetchViaScript(url);
+      if(!result.ok) throw new Error(result.message||'Save failed');
+    }
+
     _cloudLastSaved = new Date();
     try{ localStorage.setItem(SK, JSON.stringify(DB)); }catch{}
     cloudStatusUI('ok','☁️ '+_cloudLastSaved.toLocaleTimeString('sv-SE'));
@@ -1058,26 +1072,23 @@ async function testCloudConn(){
   const res=document.getElementById('gdrive-test-result');
   if(res) res.innerHTML='<span style="color:var(--mut);font-size:12px">🔄 Testar...</span>';
   try{
-    const resp = await fetch(APPS_SCRIPT_URL+'?action=ping');
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
-    const data = await resp.json();
-    if(data.ok){
+    const result = await fetchViaScript(APPS_SCRIPT_URL+'?action=ping');
+    if(result.ok){
       if(res) res.innerHTML='<div style="color:var(--good);font-size:12px;padding:6px 0">'
-        +'✓ Apps Script svarar! · '+data.message
-        +'<br><small style="color:var(--mut)">Aktiv sedan: '+new Date(data.ts).toLocaleString('sv-SE')+'</small>'
+        +'✓ Apps Script svarar! · '+result.message
+        +'<br><small style="color:var(--mut)">'+new Date(result.ts).toLocaleString('sv-SE')+'</small>'
         +'</div>';
       // Also test read
-      const r2 = await fetch(APPS_SCRIPT_URL+'?action=read');
-      const d2 = await r2.json();
-      if(d2.ok&&d2.data){
-        const extra = document.createElement('div');
+      const r2 = await fetchViaScript(APPS_SCRIPT_URL+'?action=read');
+      if(r2.ok&&r2.data&&res){
+        const extra=document.createElement('div');
         extra.style='color:var(--good);font-size:12px;margin-top:4px';
-        extra.textContent='✓ Data läst: '+d2.data.facilities?.length+' anläggningar, '
-          +d2.data.users?.length+' användare';
+        extra.textContent='✓ Data läst: '+(r2.data.facilities?.length||0)+' anläggningar, '
+          +(r2.data.users?.length||0)+' användare';
         res.appendChild(extra);
       }
     } else {
-      if(res) res.innerHTML='<span style="color:var(--bad);font-size:12px">✗ '+data.message+'</span>';
+      if(res) res.innerHTML='<span style="color:var(--bad);font-size:12px">✗ '+result.message+'</span>';
     }
   }catch(e){
     if(res) res.innerHTML='<span style="color:var(--bad);font-size:12px">✗ Fel: '+e.message+'</span>';
