@@ -878,6 +878,11 @@ async function initJsonBin(){
   startCloudPoll();
 }
 
+// Start cloud sync when page loads
+if(USE_CLOUD){
+  window.addEventListener('load', ()=>setTimeout(initJsonBin, 800));
+}
+
 // ── CLOUD LOAD ─────────────────────────────────────────────────────
 async function cloudLoad(){
   if(!_cloudReady||_cloudSyncing) return false;
