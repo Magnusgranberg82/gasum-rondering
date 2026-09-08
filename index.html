@@ -1062,29 +1062,6 @@ async function testCloudConn(){
 }
 
 async function testGDriveConn(){ testCloudConn(); }
-  const res = document.getElementById('gdrive-test-result');
-  res.innerHTML = '<span style="color:var(--mut);font-size:12px">🔄 Testar...</span>';
-  const apiKey = document.getElementById('cfg-apikey')?.value?.trim()||'';
-  const fileId = document.getElementById('cfg-fileid')?.value?.trim()||'';
-  if(!apiKey||!fileId){
-    res.innerHTML='<span style="color:var(--bad);font-size:12px">Fyll i API-nyckel och Fil-ID först.</span>';
-    return;
-  }
-  try{
-    const resp = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?key=${apiKey}&fields=name,size,modifiedTime`
-    );
-    const data = await resp.json();
-    if(data.name){
-      res.innerHTML=`<span style="color:var(--good);font-size:12px">✓ Anslutning OK! Fil: <strong>${data.name}</strong> · Senast ändrad: ${new Date(data.modifiedTime).toLocaleString('sv-SE')}</span>`;
-    } else {
-      res.innerHTML=`<span style="color:var(--bad);font-size:12px">✗ Fel: ${JSON.stringify(data.error?.message||data)}</span>`;
-    }
-  }catch(e){
-    res.innerHTML=`<span style="color:var(--bad);font-size:12px">✗ Nätverksfel: ${e.message}</span>`;
-  }
-}
-
 // ── MSAL STUB (kept for future M365) ──────────────────────────────
 let _msalInstance = null;
 let _msalToken = null;
