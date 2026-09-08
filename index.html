@@ -827,83 +827,53 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
 // Lägg ALDRIG in nycklar direkt här — använd config.js istället
 // Wait for config.js to load (it's in a separate script tag before this)
 const JSONBIN_CONFIG = window.JSONBIN_CONFIG || { apiKey:'', binId:'' };
-const USE_CLOUD = !!(JSONBIN_CONFIG.apiKey && JSONBIN_CONFIG.binId);
+const USE_CLOUD = !!(JSONBIN_CONFIG.apiKey && JSONBIN_CONFIG.apiKey.length > 10);
 const USE_GDRIVE = false;
 
-// ══ GOOGLE DRIVE PUBLIC FOLDER SYNC ══════════════════════════════
-// No OAuth needed — public folder with guest write access
-// API key for reading, resumable upload for writing
+// ══ GOOGLE APPS SCRIPT SYNC ══════════════════════════════════════
+// No OAuth — Apps Script handles auth server-side
+// All users read/write via the web app URL
 
-let _cloudReady    = false;
-let _cloudSyncing  = false;
+let _cloudReady     = false;
+let _cloudSyncing   = false;
 let _cloudLastSaved = null;
 let _cloudPollTimer = null;
-let _dataFileId    = null;  // ID of gasum_data.json in Drive folder
+let _dataFileId     = null;
 
 const DRIVE_FOLDER_ID = '1I_d70G4YZtvOHTD1XUxQaH8bfE1VWi8X';
 const DATA_FILENAME   = 'gasum_data.json';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyBqbMJ7OnkPwmPl2Ljx7UDgmPjD1NWR-PGWwQQgl19EJ42dld9_VRWM4yyKRd8ogV7hw/exec';
 
 // ── INIT ───────────────────────────────────────────────────────────
 async function initJsonBin(){
   if(!USE_CLOUD) return;
   _cloudReady = true;
   cloudStatusUI('syncing','Ansluter...');
-  // Find or create data file in folder
-  await findOrCreateDataFile();
-  if(_dataFileId){
-    await cloudLoad();
-    startCloudPoll();
-  }
-}
-
-// ── FIND OR CREATE gasum_data.json ────────────────────────────────
-async function findOrCreateDataFile(){
-  try{
-    // Search for existing file in folder
-    const apiKey = JSONBIN_CONFIG.apiKey;
-    const q = encodeURIComponent(
-      '"'+DRIVE_FOLDER_ID+'" in parents and name="'+DATA_FILENAME+'" and trashed=false'
-    );
-    const resp = await fetch(
-      'https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name,modifiedTime)&key='+apiKey
-    );
-    if(!resp.ok) throw new Error('Search failed: '+resp.status);
-    const data = await resp.json();
-    
-    if(data.files && data.files.length > 0){
-      _dataFileId = data.files[0].id;
-      console.log('Found data file:', _dataFileId);
-      cloudStatusUI('ok','☁️ Fil funnen');
-    } else {
-      // File doesn't exist yet — will be created on first save
-      console.log('No data file yet — will create on first save');
-      cloudStatusUI('ok','☁️ Klar (ny)');
-    }
-  }catch(e){
-    console.error('findOrCreateDataFile error:',e);
-    cloudStatusUI('warn','⚠ '+e.message);
-  }
+  await cloudLoad();
+  startCloudPoll();
 }
 
 // ── CLOUD LOAD ─────────────────────────────────────────────────────
 async function cloudLoad(){
-  if(!_cloudReady || !_dataFileId) return false;
+  if(!_cloudReady||_cloudSyncing) return false;
   try{
     cloudStatusUI('syncing','Hämtar...');
-    const apiKey = JSONBIN_CONFIG.apiKey;
-    const resp = await fetch(
-      'https://www.googleapis.com/drive/v3/files/'+_dataFileId+'?alt=media&key='+apiKey
-    );
+    const resp = await fetch(APPS_SCRIPT_URL+'?action=read');
     if(!resp.ok) throw new Error('HTTP '+resp.status);
-    const text = await resp.text();
-    if(!text||text.trim()===''||text.trim()==='{}') return false;
+    const result = await resp.json();
+    if(!result.ok) throw new Error(result.message||'API error');
     
-    const cloudData = JSON.parse(text);
-    if(!cloudData||!cloudData.facilities) return false;
-
+    const cloudData = result.data;
+    if(!cloudData||!cloudData.facilities){
+      // No data yet — push local up
+      cloudStatusUI('syncing','Laddar upp lokal data...');
+      await cloudSave();
+      return false;
+    }
+    
     const localTs = DB._savedAt ? new Date(DB._savedAt) : new Date(0);
     const cloudTs = cloudData._savedAt ? new Date(cloudData._savedAt) : new Date(0);
-
+    
     if(cloudTs >= localTs){
       DB = cloudData;
       if(!DB.workPermits) DB.workPermits=[];
@@ -928,62 +898,26 @@ async function cloudLoad(){
 
 // ── CLOUD SAVE ─────────────────────────────────────────────────────
 async function cloudSave(){
-  if(!_cloudReady || _cloudSyncing) return;
+  if(!_cloudReady||_cloudSyncing) return;
   _cloudSyncing = true;
   cloudStatusUI('syncing','Sparar...');
   try{
     DB._savedAt = new Date().toISOString();
-    DB._savedBy = CU?.name || 'System';
-    const content = JSON.stringify(DB, null, 2);
-    const blob = new Blob([content], {type:'application/json'});
-    const apiKey = JSONBIN_CONFIG.apiKey;
-
-    if(_dataFileId){
-      // Update existing file — simple media upload
-      const resp = await fetch(
-        'https://www.googleapis.com/upload/drive/v3/files/'+_dataFileId+'?uploadType=media',
-        {
-          method:'PATCH',
-          headers:{
-            'Content-Type':'application/json',
-            'Authorization':'Bearer '+ await getGuestToken(),
-          },
-          body: blob,
-        }
-      );
-      if(!resp.ok){
-        const err = await resp.json().catch(()=>({}));
-        throw new Error(err?.error?.message || resp.status);
-      }
-    } else {
-      // Create new file in folder
-      const meta = JSON.stringify({
-        name: DATA_FILENAME,
-        parents: [DRIVE_FOLDER_ID],
-        mimeType: 'application/json',
-      });
-      const form = new FormData();
-      form.append('metadata', new Blob([meta],{type:'application/json'}));
-      form.append('file', blob);
-      const resp = await fetch(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-        {
-          method:'POST',
-          headers:{'Authorization':'Bearer '+ await getGuestToken()},
-          body: form,
-        }
-      );
-      if(!resp.ok){
-        const err = await resp.json().catch(()=>({}));
-        throw new Error(err?.error?.message || resp.status);
-      }
-      const result = await resp.json();
-      _dataFileId = result.id;
-    }
-
+    DB._savedBy = CU?.name||'System';
+    
+    const resp = await fetch(APPS_SCRIPT_URL+'?action=write', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(DB),
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const result = await resp.json();
+    if(!result.ok) throw new Error(result.message||'Save failed');
+    
     _cloudLastSaved = new Date();
     try{ localStorage.setItem(SK, JSON.stringify(DB)); }catch{}
     cloudStatusUI('ok','☁️ '+_cloudLastSaved.toLocaleTimeString('sv-SE'));
+    window._pendingCloudSave = false;
   }catch(e){
     console.error('Cloud save error:',e);
     cloudStatusUI('error','⚠ '+e.message);
@@ -992,45 +926,18 @@ async function cloudSave(){
   _cloudSyncing = false;
 }
 
-// ── GUEST TOKEN ────────────────────────────────────────────────────
-// For public folders, we can write using the API key directly
-// via a service account or via the public upload endpoint
-async function getGuestToken(){
-  // Use API key as bearer — works for public folders with editor access
-  return JSONBIN_CONFIG.apiKey;
-}
-
-// ── UPLOAD IMAGE TO DRIVE ──────────────────────────────────────────
+// ── UPLOAD IMAGE ────────────────────────────────────────────────────
 async function uploadImageToDrive(base64Data, filename){
   if(!_cloudReady) return null;
   try{
-    const byteStr = atob(base64Data.split(',')[1]);
-    const ab = new ArrayBuffer(byteStr.length);
-    const ia = new Uint8Array(ab);
-    for(let i=0;i<byteStr.length;i++) ia[i]=byteStr.charCodeAt(i);
-    const blob = new Blob([ab], {type:'image/jpeg'});
-    
-    const meta = JSON.stringify({
-      name: filename||('bild_'+Date.now()+'.jpg'),
-      parents: [DRIVE_FOLDER_ID],
-      mimeType: 'image/jpeg',
+    const resp = await fetch(APPS_SCRIPT_URL+'?action=upload_image', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({imageData: base64Data, filename: filename||'bild_'+Date.now()+'.jpg'}),
     });
-    const form = new FormData();
-    form.append('metadata', new Blob([meta],{type:'application/json'}));
-    form.append('file', blob);
-    
-    const resp = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-      {
-        method:'POST',
-        headers:{'Authorization':'Bearer '+ await getGuestToken()},
-        body: form,
-      }
-    );
-    if(!resp.ok) throw new Error('Upload failed: '+resp.status);
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
     const result = await resp.json();
-    // Return public URL
-    return 'https://drive.google.com/uc?id='+result.id;
+    return result.ok ? result.url : null;
   }catch(e){
     console.error('Image upload error:',e);
     return null;
@@ -1041,7 +948,7 @@ async function uploadImageToDrive(base64Data, filename){
 function startCloudPoll(){
   if(_cloudPollTimer) clearInterval(_cloudPollTimer);
   _cloudPollTimer = setInterval(async()=>{
-    if(!_cloudSyncing && document.visibilityState==='visible'){
+    if(!_cloudSyncing&&document.visibilityState==='visible'){
       const updated = await cloudLoad();
       if(updated) toast('🔄 Data uppdaterad',2000);
     }
@@ -1050,24 +957,26 @@ function startCloudPoll(){
 
 // ── STATUS UI ──────────────────────────────────────────────────────
 function cloudStatusUI(status, msg){
-  const el = document.getElementById('gdrive-status');
+  const el=document.getElementById('gdrive-status');
   if(!el) return;
-  const colors = {ok:'#86efac',syncing:'#93c5fd',warn:'#fde68a',error:'#fca5a5'};
-  const icons  = {ok:'☁️',syncing:'🔄',warn:'⚠️',error:'❌'};
+  const colors={ok:'#86efac',syncing:'#93c5fd',warn:'#fde68a',error:'#fca5a5'};
+  const icons={ok:'☁️',syncing:'🔄',warn:'⚠️',error:'❌'};
   el.innerHTML='<span style="color:'+(colors[status]||'rgba(255,255,255,.4)')+
     ';font-size:10px;font-weight:600">'+(icons[status]||'')+' '+msg+'</span>';
   if(status==='error'&&!window._cloudErrToasted){
     window._cloudErrToasted=true;
-    toast('⚠ Google Drive: '+msg,4000);
+    toast('⚠ Molnsynk: '+msg,4000);
     setTimeout(()=>window._cloudErrToasted=false,60000);
   }
   if(status==='ok') window._cloudErrToasted=false;
 }
 
-// ── LEGACY ALIASES ────────────────────────────────────────────────
+// ── LEGACY ALIASES ─────────────────────────────────────────────────
 function gdriveStatusUI(s,m){ cloudStatusUI(s,m); }
 async function gdriveSave(){ await cloudSave(); }
 async function gdriveLoad(){ return await cloudLoad(); }
+
+
 
 
 
@@ -1123,6 +1032,36 @@ function showGDriveSetup(){
 
 
 async function testCloudConn(){
+  const res=document.getElementById('gdrive-test-result');
+  if(res) res.innerHTML='<span style="color:var(--mut);font-size:12px">🔄 Testar...</span>';
+  try{
+    const resp = await fetch(APPS_SCRIPT_URL+'?action=ping');
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const data = await resp.json();
+    if(data.ok){
+      if(res) res.innerHTML='<div style="color:var(--good);font-size:12px;padding:6px 0">'
+        +'✓ Apps Script svarar! · '+data.message
+        +'<br><small style="color:var(--mut)">Aktiv sedan: '+new Date(data.ts).toLocaleString('sv-SE')+'</small>'
+        +'</div>';
+      // Also test read
+      const r2 = await fetch(APPS_SCRIPT_URL+'?action=read');
+      const d2 = await r2.json();
+      if(d2.ok&&d2.data){
+        const extra = document.createElement('div');
+        extra.style='color:var(--good);font-size:12px;margin-top:4px';
+        extra.textContent='✓ Data läst: '+d2.data.facilities?.length+' anläggningar, '
+          +d2.data.users?.length+' användare';
+        res.appendChild(extra);
+      }
+    } else {
+      if(res) res.innerHTML='<span style="color:var(--bad);font-size:12px">✗ '+data.message+'</span>';
+    }
+  }catch(e){
+    if(res) res.innerHTML='<span style="color:var(--bad);font-size:12px">✗ Fel: '+e.message+'</span>';
+  }
+}
+
+async function _oldTestCloudConn(){
   const res=document.getElementById('gdrive-test-result');
   if(res) res.innerHTML='<span style="color:var(--mut);font-size:12px">🔄 Testar Drive-anslutning...</span>';
   try{
