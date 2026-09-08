@@ -357,7 +357,7 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" style="height:44px;display:block;margin:0 auto">
   <text x="10" y="46" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-weight="800" font-size="52" fill="#6B8DD6" letter-spacing="-1">Gasum</text>
 </svg>
-      <div style="font-size:11px;color:var(--mut);margin-top:6px;letter-spacing:.3px">Digitala verktyg av Magnus Granberg · v1.0</div>
+      <div style="font-size:11px;color:var(--mut);margin-top:6px;letter-spacing:.3px">Digitala verktyg av Magnus Granberg</div>
     </div>
 
     <!-- Step 1: Land -->
@@ -899,6 +899,7 @@ async function cloudLoad(){
       DB.facilities.forEach(f=>{ if(!f.type) f.type='biogas'; });
       try{ localStorage.setItem(SK, JSON.stringify(DB)); }catch{}
       cloudStatusUI('ok','☁️ '+new Date().toLocaleTimeString('sv-SE'));
+      console.log('Cloud sync OK — facilities:',DB.facilities.length,'users:',DB.users.length,'sessions:',DB.sessions.length);
       // Refresh UI if logged in
       if(CU) renderHomeBadges();
       return true;
@@ -1042,8 +1043,8 @@ function showGDriveSetup(){
   <div class="card">
     <div class="ctit">☁️ Synkstatus</div>
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <div id="gdrive-status">
-        <span style="font-size:12px;color:var(--mut)">${USE_GDRIVE ? '☁️ Google Drive aktiverat' : '💾 Använder lokal lagring (Google Drive ej konfigurerat)'}</span>
+      <div id="gdrive-status-settings" style="margin-bottom:8px">
+        <span style="font-size:12px;color:var(--mut)">${USE_CLOUD ? '☁️ JSONBin molnsynk aktiverad · Bin: '+JSONBIN_CONFIG.binId.slice(-8) : '💾 Molnsynk ej konfigurerad'}</span>
       </div>
       ${USE_GDRIVE ? `
       <div style="display:flex;gap:7px">
@@ -1080,7 +1081,32 @@ function saveGDriveConfig(){
   </div>`;
 }
 
-async function testGDriveConn(){
+async function testCloudConn(){
+  const res=document.getElementById('gdrive-test-result');
+  if(res) res.innerHTML='<span style="color:var(--mut);font-size:12px">🔄 Testar...</span>';
+  try{
+    const resp=await fetch(
+      'https://api.jsonbin.io/v3/b/'+JSONBIN_CONFIG.binId+'/latest',
+      {headers:{'X-Access-Key':JSONBIN_CONFIG.apiKey,'X-Bin-Meta':'false'}}
+    );
+    const data=await resp.json();
+    if(resp.ok){
+      const msg=data.facilities
+        ?'✓ Anslutning OK! '+data.facilities.length+' anläggningar, '
+          +data.users?.length+' användare, '
+          +(data._savedAt?'Senast sparad: '+new Date(data._savedAt).toLocaleString('sv-SE'):'')
+        :'✓ Ansluten men bin är tom';
+      if(res) res.innerHTML='<span style="color:var(--good);font-size:12px">'+msg+'</span>';
+    } else {
+      const err=data.message||data.error||resp.status;
+      if(res) res.innerHTML='<span style="color:var(--bad);font-size:12px">✗ Fel: '+err+'</span>';
+    }
+  }catch(e){
+    if(res) res.innerHTML='<span style="color:var(--bad);font-size:12px">✗ Nätverksfel: '+e.message+'</span>';
+  }
+}
+
+async function testGDriveConn(){ testCloudConn(); }
   const res = document.getElementById('gdrive-test-result');
   res.innerHTML = '<span style="color:var(--mut);font-size:12px">🔄 Testar...</span>';
   const apiKey = document.getElementById('cfg-apikey')?.value?.trim()||'';
