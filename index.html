@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Rondering</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#5B7FD4">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Gasum Rond">
+  <link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="config.js"></script>
@@ -17,6 +24,8 @@
   --warn:#d97706;--wBg:#fef3c7;--info:#7c3aed;--iBg:#ede9fe;
   --sh:0 1px 3px rgba(0,0,0,.08),0 4px 12px rgba(0,0,0,.05);
   --r:10px;--rs:6px;--nav:64px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overscroll-behavior:none}
@@ -25,7 +34,7 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
 .bc{font-family:'Barlow Condensed',sans-serif;font-weight:700}
 
 /* ═══ LOGIN ═══════════════════════════════════════════════════════ */
-#scr-login{position:fixed;inset:0;background:linear-gradient(135deg,#1a1f2e 0%,#2d3548 100%);display:flex;align-items:center;justify-content:center;z-index:500;padding:14px}
+#scr-login{position:fixed;inset:0;background:linear-gradient(135deg,#1a1f2e 0%,#2d3548 100%);display:flex;align-items:center;justify-content:center;z-index:500;padding:14px;padding-top:calc(14px + var(--safe-top));padding-bottom:calc(14px + var(--safe-bottom))}
 #scr-login.off{display:none}
 .lcard{background:var(--sur);border-radius:16px;padding:28px;width:min(380px,100%);box-shadow:0 24px 64px rgba(0,0,0,.4)}
 .llogo{display:flex;align-items:center;gap:11px;margin-bottom:22px}
@@ -75,7 +84,7 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
 .home-admin-btn .ha-icon{font-size:20px;display:block;margin-bottom:4px}
 
 /* ═══ HOME SCREEN (after login) ══════════════════════════════════ */
-#scr-home{position:fixed;inset:0;background:linear-gradient(160deg,#1a1f2e 0%,#2d3548 60%,#1a2535 100%);display:flex;align-items:center;justify-content:center;z-index:490;padding:20px}
+#scr-home{position:fixed;inset:0;background:linear-gradient(160deg,#1a1f2e 0%,#2d3548 60%,#1a2535 100%);display:flex;align-items:center;justify-content:center;z-index:490;padding:20px;padding-top:calc(20px + var(--safe-top));padding-bottom:calc(20px + var(--safe-bottom))}
 #scr-home.off{display:none}
 .home-card{width:min(420px,100%);text-align:center}
 .home-logo{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:28px}
@@ -102,7 +111,7 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
 #scr-app{display:flex;flex-direction:column;min-height:100vh}
 #scr-app.off{display:none}
 
-#hdr{background:var(--txt);color:#fff;padding:0 14px;display:flex;align-items:center;justify-content:space-between;height:50px;position:sticky;top:0;z-index:200;box-shadow:0 2px 8px rgba(0,0,0,.25);flex-shrink:0}
+#hdr{background:var(--txt);color:#fff;padding:0 14px;padding-top:var(--safe-top);display:flex;align-items:center;justify-content:space-between;height:calc(50px + var(--safe-top));position:sticky;top:0;z-index:200;box-shadow:0 2px 8px rgba(0,0,0,.25);flex-shrink:0}
 .hlogo{display:flex;align-items:center;gap:7px}
 .hlic{width:28px;height:28px;background:var(--acc);border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:13px;color:#fff}
 .hltx{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;letter-spacing:2px}
@@ -121,7 +130,7 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
 .ntab{padding:10px 14px;border:none;background:transparent;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:13px;letter-spacing:1px;color:var(--mut);border-bottom:3px solid transparent;white-space:nowrap;transition:all .18s}
 .ntab:hover{color:var(--txt)}.ntab.on{color:var(--acc);border-bottom-color:var(--acc)}
 
-#mnav-rond,#mnav-lb{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--sur);border-top:1px solid var(--brd);z-index:200;height:var(--nav)}
+#mnav-rond,#mnav-lb{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--sur);border-top:1px solid var(--brd);z-index:200;height:calc(var(--nav) + var(--safe-bottom));padding-bottom:var(--safe-bottom)}
 .mtab{flex:1;border:none;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:9px;font-family:'Barlow Condensed',sans-serif;font-weight:600;color:var(--mut);transition:color .15s;padding:4px 0}
 .mtab .mi{font-size:17px}
 .mtab.on{color:var(--acc)}
@@ -305,7 +314,7 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
 @media(max-width:640px){
   #dnav{display:none}
   #mnav-rond.show,#mnav-lb.show,#mnav-wp.show{display:flex}
-  #main{padding:8px;padding-bottom:calc(var(--nav) + 8px)}
+  #main{padding:8px;padding-bottom:calc(var(--nav) + var(--safe-bottom) + 8px)}
   .hright .fbadge{display:none}
   .g2{grid-template-columns:1fr!important}
   .g3{grid-template-columns:1fr!important}
@@ -789,7 +798,7 @@ body{background:var(--bg);color:var(--txt);font-family:'Barlow',sans-serif;font-
   </div>
 
   <!-- Work Permit bottom nav -->
-  <div id="mnav-wp" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--sur);border-top:1px solid var(--brd);z-index:200;height:var(--nav)">
+  <div id="mnav-wp" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--sur);border-top:1px solid var(--brd);z-index:200;height:calc(var(--nav) + var(--safe-bottom));padding-bottom:var(--safe-bottom)">
     <button class="mtab on" id="mt-wp-list" onclick="goTab('wp-list')"><div class="miw"><div class="mi">🛡️</div></div><span>Tillstånd</span></button>
     <button class="mtab" id="mt-wp-new" onclick="goTab('wp-new')"><div class="miw"><div class="mi">➕</div></div><span>Nytt AT</span></button>
     <button class="mtab" id="mt-wp-arch" onclick="goTab('wp-arch')"><div class="miw"><div class="mi">📁</div></div><span>Arkiv</span></button>
@@ -846,8 +855,10 @@ async function initGDrive(){
     });
     _gdriveReady = true;
     console.log('Google Drive API ready');
+    showDriveSpinner('Ansluter till Google Drive...');
     // Authenticate and load data
     await gdriveAuth();
+    hideDriveSpinner();
   }catch(e){
     console.error('GDrive init error:', e);
     gdriveStatusUI('error', 'Google Drive-fel: ' + e.message);
@@ -864,8 +875,13 @@ function gdriveAuth(){
         _gdriveToken = resp.access_token;
         gapi.client.setToken({access_token: _gdriveToken});
         gdriveStatusUI('ok', 'Google Drive ansluten');
-        // Load cloud data on auth
+        // Load cloud data on auth — Drive is primary
         await gdriveLoad();
+        // Process any saves that queued during auth
+        if(window._pendingDriveSave){
+          window._pendingDriveSave=false;
+          await gdriveSave();
+        }
         // Start polling for changes every 30 seconds
         startGDrivePoll();
         resolve();
@@ -875,42 +891,52 @@ function gdriveAuth(){
   });
 }
 
-// ── CLOUD LOAD ─────────────────────────────────────────────────────
+// ── CLOUD LOAD — Drive is authoritative ───────────────────────────
 async function gdriveLoad(){
   if(!_gdriveReady || !_gdriveToken) return false;
   try{
-    gdriveStatusUI('syncing', 'Hämtar data...');
-    const resp = await gapi.client.drive.files.get({
-      fileId: GDRIVE_CONFIG.fileId,
-      alt: 'media',
-    });
-    const cloudData = typeof resp.result === 'string'
-      ? JSON.parse(resp.result)
-      : resp.result;
-    if(cloudData && cloudData.facilities){
-      // Merge strategy: cloud wins unless local is newer
-      const localTs  = DB._savedAt ? new Date(DB._savedAt) : new Date(0);
-      const cloudTs  = cloudData._savedAt ? new Date(cloudData._savedAt) : new Date(0);
-      if(cloudTs > localTs){
-        DB = cloudData;
-        // Re-init missing fields
-        if(!DB.workPermits) DB.workPermits=[];
-        if(!DB.logEntries)  DB.logEntries=[];
-        DB.facilities.forEach(f=>{ if(!f.type) f.type='biogas'; });
-        // Save to localStorage as cache
-        try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }catch{}
-        console.log('Loaded from Google Drive:', cloudTs);
-        gdriveStatusUI('ok', 'Synkad ' + new Date().toLocaleTimeString('sv-SE'));
-        return true;
-      } else {
-        console.log('Local data is newer, keeping local');
-        gdriveStatusUI('ok', 'Lokal data är nyare');
-      }
+    gdriveStatusUI('syncing','Hämtar från molnet...');
+    // Use fetch directly — more reliable than gapi client for media
+    const resp = await fetch(
+      'https://www.googleapis.com/drive/v3/files/'+GDRIVE_CONFIG.fileId+'?alt=media',
+      {headers:{'Authorization':'Bearer '+_gdriveToken}}
+    );
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const text = await resp.text();
+    // Empty file — push local data up on first run
+    if(!text||text.trim()===''||text.trim()==='{}'||text.trim()==='null'){
+      gdriveStatusUI('syncing','Tom fil — laddar upp lokal data...');
+      await gdriveSave();
+      return false;
     }
-    return false;
+    const cloudData = JSON.parse(text);
+    if(!cloudData||!cloudData.facilities) return false;
+
+    // Drive wins if newer or same age — it is the primary source
+    const localTs = DB._savedAt ? new Date(DB._savedAt) : new Date(0);
+    const cloudTs = cloudData._savedAt ? new Date(cloudData._savedAt) : new Date(0);
+
+    if(cloudTs >= localTs){
+      DB = cloudData;
+      if(!DB.workPermits) DB.workPermits=[];
+      if(!DB.logEntries)  DB.logEntries=[];
+      if(!DB.rounds)      DB.rounds=[];
+      if(!DB.sessions)    DB.sessions=[];
+      DB.facilities.forEach(f=>{ if(!f.type) f.type='biogas'; });
+      // Update localStorage cache
+      try{ localStorage.setItem(SK, JSON.stringify(DB)); }catch{}
+      gdriveStatusUI('ok','☁️ '+new Date().toLocaleTimeString('sv-SE'));
+      console.log('Drive loaded, ts:', cloudTs);
+      return true;
+    } else {
+      // Local is newer — push up to Drive
+      gdriveStatusUI('syncing','Lokal data är nyare — laddar upp...');
+      await gdriveSave();
+      return false;
+    }
   }catch(e){
-    console.error('GDrive load error:', e);
-    gdriveStatusUI('warn', 'Kunde inte läsa från molnet');
+    console.error('GDrive load error:',e);
+    gdriveStatusUI('warn','⚠ Offline — lokal kopia');
     return false;
   }
 }
@@ -965,18 +991,23 @@ function startGDrivePoll(){
       const updated = await gdriveLoad();
       if(updated) toast('🔄 Data uppdaterad från molnet', 3000);
     }
-  }, 30000); // Poll every 30 seconds
+  }, 20000); // Poll every 20 seconds
 }
 
 // ── STATUS UI ─────────────────────────────────────────────────────
 function gdriveStatusUI(status, msg){
   const el = document.getElementById('gdrive-status');
   if(!el) return;
-  const colors = {
-    ok:'#16a34a', syncing:'#2563eb', warn:'#d97706', error:'#dc2626'
-  };
-  const icons = {ok:'☁️', syncing:'🔄', warn:'⚠️', error:'❌'};
-  el.innerHTML = `<span style="color:${colors[status]||'#6b7280'};font-size:11px;font-weight:600">${icons[status]||''} ${msg}</span>`;
+  const colors = {ok:'#86efac',syncing:'#93c5fd',warn:'#fde68a',error:'#fca5a5'};
+  const icons  = {ok:'☁️',syncing:'🔄',warn:'⚠️',error:'❌'};
+  el.innerHTML='<span style="color:'+( colors[status]||'rgba(255,255,255,.4)')+';font-size:10px;font-weight:600">'+(icons[status]||'')+' '+msg+'</span>';
+  // If offline/error show toast once
+  if(status==='error'&&!window._driveErrToasted){
+    window._driveErrToasted=true;
+    toast('⚠ Google Drive ej tillgänglig — arbetar offline',4000);
+    setTimeout(()=>window._driveErrToasted=false, 60000);
+  }
+  if(status==='ok') window._driveErrToasted=false;
 }
 
 // ── SETUP WIZARD ───────────────────────────────────────────────────
@@ -1208,18 +1239,22 @@ function storageLoad(){
   }catch{return null;}
 }
 function storageSave(){
+  // Always update localStorage as offline cache
   try{
     const data=JSON.stringify(DB);
     localStorage.setItem(SK,data);
     const kb=Math.round(data.length/1024);
     if(kb>4000) toast('⚠ Databasen är stor ('+kb+' KB). Exportera och rensa.',5000);
   }catch(e){
-    if(e.name==='QuotaExceededError') toast('⚠ Lagring full! Arkivera data.',5000);
+    if(e.name==='QuotaExceededError') toast('⚠ Lokal lagring full!',5000);
   }
-  // Sync to Google Drive — debounced 2 seconds after last save
+  // Drive is primary — save immediately (debounced 1.5s)
   if(USE_GDRIVE && _gdriveReady && _gdriveToken){
     clearTimeout(window._gdriveSaveTimer);
-    window._gdriveSaveTimer=setTimeout(gdriveSave, 2000);
+    window._gdriveSaveTimer=setTimeout(gdriveSave, 1500);
+  } else if(USE_GDRIVE && !_gdriveToken){
+    // Not authenticated yet — queue for when auth completes
+    window._pendingDriveSave = true;
   }
 }
 function arcLoad(){try{const d=localStorage.getItem(SK_ARC);return d?JSON.parse(d):[];}catch{return[];}}
