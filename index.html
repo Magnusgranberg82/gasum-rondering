@@ -936,12 +936,26 @@ async function cloudLoad(){
     const cloudTs = cloudData._savedAt ? new Date(cloudData._savedAt) : new Date(0);
     
     if(cloudTs >= localTs){
+      // Merge — keep local base64 images that cloud doesn't have
+      const localEntries = DB.logEntries || [];
       DB = cloudData;
       if(!DB.workPermits) DB.workPermits=[];
       if(!DB.logEntries)  DB.logEntries=[];
       if(!DB.rounds)      DB.rounds=[];
       if(!DB.sessions)    DB.sessions=[];
       DB.facilities.forEach(f=>{ if(!f.type) f.type='biogas'; });
+
+      // Restore local base64 images — cloud only has Drive URLs
+      DB.logEntries = DB.logEntries.map(cloudEntry=>{
+        const localEntry = localEntries.find(e=>e.id===cloudEntry.id);
+        if(!localEntry) return cloudEntry;
+        // Merge images: prefer Drive URLs from cloud, keep local base64 if no cloud URL
+        const merged = (cloudEntry.images||[]).length > 0
+          ? cloudEntry.images  // cloud has URLs — use them
+          : (localEntry.images||[]);  // cloud has none — keep local
+        return {...cloudEntry, images: merged};
+      });
+
       try{ localStorage.setItem(SK, JSON.stringify(DB)); }catch{}
       cloudStatusUI('ok','☁️ '+new Date().toLocaleTimeString('sv-SE'));
       if(CU) try{ renderHomeBadges(); }catch{}
