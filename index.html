@@ -920,8 +920,10 @@ async function cloudLoad(){
   if(!_cloudReady||_cloudSyncing) return false;
   try{
     cloudStatusUI('syncing','Hämtar...');
-    // Use script tag injection to bypass CORS
-    const result = await fetchViaScript(APPS_SCRIPT_URL+'?action=read');
+    // Use regular fetch for read — no CORS issue with GET
+    const resp = await fetch(APPS_SCRIPT_URL+'?action=read');
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const result = await resp.json();
     if(!result.ok) throw new Error(result.message||'API error');
     
     const cloudData = result.data;
@@ -1155,19 +1157,22 @@ async function testCloudConn(){
   const res=document.getElementById('gdrive-test-result');
   if(res) res.innerHTML='<span style="color:var(--mut);font-size:12px">🔄 Testar...</span>';
   try{
-    const result = await fetchViaScript(APPS_SCRIPT_URL+'?action=ping');
+    const resp = await fetch(APPS_SCRIPT_URL+'?action=ping');
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const result = await resp.json();
     if(result.ok){
       if(res) res.innerHTML='<div style="color:var(--good);font-size:12px;padding:6px 0">'
         +'✓ Apps Script svarar! · '+result.message
         +'<br><small style="color:var(--mut)">'+new Date(result.ts).toLocaleString('sv-SE')+'</small>'
         +'</div>';
-      // Also test read
-      const r2 = await fetchViaScript(APPS_SCRIPT_URL+'?action=read');
-      if(r2.ok&&r2.data&&res){
+      const r2 = await fetch(APPS_SCRIPT_URL+'?action=read');
+      const d2 = await r2.json();
+      if(d2.ok&&d2.data&&res){
         const extra=document.createElement('div');
         extra.style='color:var(--good);font-size:12px;margin-top:4px';
-        extra.textContent='✓ Data läst: '+(r2.data.facilities?.length||0)+' anläggningar, '
-          +(r2.data.users?.length||0)+' användare';
+        extra.textContent='✓ Data läst: '+(d2.data.facilities?.length||0)+' anläggningar, '
+          +(d2.data.users?.length||0)+' användare, '
+          +(d2.data.logEntries?.length||0)+' loggboksinlägg';
         res.appendChild(extra);
       }
     } else {
