@@ -1009,19 +1009,17 @@ async function cloudSave(){
 async function uploadImageToDrive(base64Data, filename){
   if(!_cloudReady) return null;
   try{
-    // Compress first
-    const compressed = await compressImage(base64Data, 0.6, 800);
-    // Use JSONP for image — small enough after compression
-    const b64enc = encodeURIComponent(compressed);
-    if(b64enc.length > 6000){
-      console.warn('Image too large even after compression');
-      return null;
-    }
-    const fname = encodeURIComponent(filename||'bild_'+Date.now()+'.jpg');
-    const result = await fetchViaScript(
-      APPS_SCRIPT_URL+'?action=upload_image&imageData='+b64enc+'&filename='+fname
-    );
-    return result.ok ? result.url : null;
+    const compressed = await compressImage(base64Data, 0.5, 600);
+    const fname = filename||'bild_'+Date.now()+'.jpg';
+    const payload = JSON.stringify({
+      action: 'upload_image',
+      imageData: compressed,
+      filename: fname,
+    });
+    await sendViaIframe(APPS_SCRIPT_URL, payload);
+    // Returnera null — bild sparas i Drive/bilder men URL okänd
+    // Bilden visas lokalt som base64 tills SharePoint-migration
+    return null;
   }catch(e){
     console.error('Image upload error:',e);
     return null;
