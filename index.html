@@ -941,9 +941,9 @@ async function cloudSave(){
       images:(e.images||[]).filter(img=>typeof img==='string'&&img.startsWith('http'))
     }));
 
-    // Skicka data via form-submit i hidden iframe — kringgår CORS
-    const jsonStr = JSON.stringify(slim);
-    await sendViaIframe(APPS_SCRIPT_URL+'?action=write', jsonStr);
+    // Skicka via hidden iframe form (kringgår CORS)
+    slim.action = 'write';
+    await sendViaIframe(APPS_SCRIPT_URL, JSON.stringify(slim));
     const result = {ok:true};
 
     _cloudLastSaved = new Date();
@@ -962,19 +962,18 @@ async function cloudSave(){
 async function uploadImageToDrive(base64Data, filename){
   if(!_cloudReady) return null;
   try{
-    // Compress before upload
-    const compressed = await compressImage(base64Data, 0.7, 1200);
-    const resp = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        action: 'upload_image',
-        imageData: compressed,
-        filename: filename||'bild_'+Date.now()+'.jpg',
-      }),
-    });
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
-    const result = await resp.json();
+    // Compress first
+    const compressed = await compressImage(base64Data, 0.6, 800);
+    // Use JSONP for image — small enough after compression
+    const b64enc = encodeURIComponent(compressed);
+    if(b64enc.length > 6000){
+      console.warn('Image too large even after compression');
+      return null;
+    }
+    const fname = encodeURIComponent(filename||'bild_'+Date.now()+'.jpg');
+    const result = await fetchViaScript(
+      APPS_SCRIPT_URL+'?action=upload_image&imageData='+b64enc+'&filename='+fname
+    );
     return result.ok ? result.url : null;
   }catch(e){
     console.error('Image upload error:',e);
@@ -2475,26 +2474,26 @@ async function lbSubmit(){
   toast('✓ Inlägg sparat!');
   window.scrollTo({top:0,behavior:'smooth'});
 
-  // Then try to upload images to Drive in background
-  if(_lbImgData.length && USE_CLOUD && _cloudReady){
+  // Background: try to replace base64 with Drive URLs
+  if(entry.images.length && USE_CLOUD && _cloudReady){
     setTimeout(async()=>{
       try{
-        const urls = await Promise.all(entry.images.map(async(b64,i)=>{
-          if(b64.startsWith('http')) return b64; // already a URL
-          const url = await uploadImageToDrive(b64,'lb_'+entry.id+'_'+i+'.jpg');
-          return url || b64;
-        }));
-        // Update entry with Drive URLs
-        const idx = DB.logEntries.findIndex(e=>e.id===entry.id);
-        if(idx>=0){
-          DB.logEntries[idx].images = urls;
-          storageSave();
-          toast('☁️ Bilder uppladdade till Drive',2000);
+        let changed = false;
+        for(let i=0; i<entry.images.length; i++){
+          const img = entry.images[i];
+          if(img && !img.startsWith('http')){
+            const url = await uploadImageToDrive(img,'lb_'+entry.id+'_'+i+'.jpg');
+            if(url){
+              const ei = DB.logEntries.findIndex(e=>e.id===entry.id);
+              if(ei>=0){ DB.logEntries[ei].images[i]=url; changed=true; }
+            }
+          }
         }
-      }catch(e){
-        console.error('Background image upload failed:',e);
+        if(changed){ storageSave(); toast('☁️ Bild sparad till Drive',2000); }
+      }catch(err){
+        console.error('Bg image upload:',err);
       }
-    }, 1000);
+    }, 2000);
   }
 }
 
