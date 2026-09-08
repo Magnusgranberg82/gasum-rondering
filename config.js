@@ -11,7 +11,7 @@ window.JSONBIN_CONFIG = {
 
   // Google API-nyckel (från Google Cloud Console)
   // Används för att läsa filer från den publika Drive-mappen
-  apiKey: 'AIzaSyA5sviIoPYGwagJnp8JX9-0iZQKfQYM9wk',
+  apiKey: 'AIzaSyDIenmFiVnCLpeKfJ7uKLiVuS2n46ZK0_w',
 
   // Används ej längre (JSONBin ersatt av Google Drive)
   binId: '',
