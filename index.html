@@ -1055,6 +1055,7 @@ async function uploadImageToDrive(base64Data, filename){
         '&filename=' +
         encodeURIComponent(fname)
       );
+    console.log("LOOKUP RESULT:", result);
 
     if(result &&
        result.ok &&
@@ -2552,6 +2553,7 @@ async function lbSubmit(){
 
   // Always save base64 locally first so entry is never lost
   entry.images = [..._lbImgData];
+  console.log("ENTRY IMAGES:", entry.images);
   DB.logEntries.unshift(entry);
   storageSave();
   lbClearForm();
@@ -2571,6 +2573,7 @@ async function lbSubmit(){
           const img = entry.images[i];
           if(img && !img.startsWith('http')){
             const url = await uploadImageToDrive(img,'lb_'+entry.id+'_'+i+'.jpg');
+            console.log("UPLOAD URL:", url);
             if(url){
               const ei = DB.logEntries.findIndex(e=>e.id===entry.id);
               if(ei>=0){ DB.logEntries[ei].images[i]=url; changed=true; }
