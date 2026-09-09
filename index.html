@@ -1016,44 +1016,83 @@ async function cloudSave(){
 
 // ── UPLOAD IMAGE ────────────────────────────────────────────────────
 async function uploadImageToDrive(base64Data, filename){
-  if(!_cloudReady) return null;
-  try{
-    const compressed = await compressImage(base64Data, 0.5, 600);
-    const fname = filename||'bild_'+Date.now()+'.jpg';
-
-    // Ladda upp via iframe
-    const payload = JSON.stringify({
-      action: 'upload_image',
-      imageData: compressed,
-      filename: fname,
-    });
-    await sendViaIframe(APPS_SCRIPT_URL, payload);
-
-    // Vänta 4 sekunder
-    await new Promise(r=>setTimeout(r, 4000));
-
-    // Sök efter filen direkt via Drive API med API-nyckel
-    const apiKey = JSONBIN_CONFIG.apiKey;
-    const folderId = '1p_R3WpPgXoTE56zIXMYXJghxC0--YBq8';
-    const q = encodeURIComponent('"'+folderId+'" in parents and name="'+fname+'" and trashed=false');
-    const resp = await fetch(
-      'https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)&key='+apiKey
-    );
-    if(!resp.ok) throw new Error('Drive API: '+resp.status);
-    const data = await resp.json();
-    if(data.files && data.files.length > 0){
-      const url = 'https://drive.google.com/uc?id='+data.files[0].id;
-      console.log('Image found in Drive:', url);
-      return url;
-    }
-    console.warn('Image not found in Drive yet');
-    return null;
-  }catch(e){
-    console.error('Image upload error:',e);
-    return null;
-  }
+2
+if(!_cloudReady) return base64Data;
+3
+ 
+4
+try{
+5
+const compressed = await compressImage(base64Data, 0.5, 600);
+6
+ 
+7
+const fname = filename || ('bild_' + Date.now() + '.jpg');
+8
+ 
+9
+const payload = JSON.stringify({
+10
+action: 'upload_image',
+11
+imageData: compressed,
+12
+filename: fname
+13
+});
+14
+ 
+15
+await sendViaIframe(APPS_SCRIPT_URL, payload);
+16
+ 
+17
+console.log('Image uploaded to Drive:', fname);
+18
+ 
+19
+/*
+20
+Viktigt:
+21
+Vi returnerar INTE null om Drive API
+22
+inte hittar filen direkt.
+23
+ 
+24
+Bilden finns redan lagrad lokalt
+25
+i loggboken som Base64.
+26
+ 
+27
+Då tappar vi aldrig bilden.
+28
+*/
+29
+ 
+30
+return compressed;
+31
+ 
+32
 }
-
+33
+catch(e){
+34
+ 
+35
+console.error('Image upload error:', e);
+36
+ 
+37
+return base64Data;
+38
+}
+39
+}
+40
 // Compress image to reduce size before upload
 function compressImage(base64, quality=0.7, maxWidth=1200){
   return new Promise(resolve=>{
