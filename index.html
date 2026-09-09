@@ -1034,38 +1034,37 @@ async function uploadImageToDrive(base64Data, filename){
         filename:fname
       });
 
+    // Ladda upp bilden
     await sendViaIframe(
       APPS_SCRIPT_URL,
       payload
     );
 
+    // Ge Apps Script tid att skriva image_index.json
     await new Promise(
-      r => setTimeout(r,1500)
+      r => setTimeout(r, 2000)
     );
 
-    const result =
-      await fetchViaScript(
-        APPS_SCRIPT_URL +
-        '?action=lookup_image' +
-        '&filename=' +
-        encodeURIComponent(fname)
-      );
-    console.log("LOOKUP RESULT:", result);
+    // Läs URL från indexfilen
+const result =
+  await fetchViaScript(
+    APPS_SCRIPT_URL +
+    '?action=get_image_url' +
+    '&filename=' +
+    encodeURIComponent(fname)
+  );
 
-    if(result &&
-       result.ok &&
-       result.url){
+console.log("LOOKUP RESULT:", result);
 
-      console.log(
-        'Drive URL:',
-        result.url
-      );
+if(
+  result &&
+  result.ok &&
+  result.url
+){
+  return result.url;
+}
 
-      return result.url;
-    }
-
-    return null;
-
+return null;
   }
   catch(err){
 
@@ -1075,7 +1074,9 @@ async function uploadImageToDrive(base64Data, filename){
     );
 
     return null;
+
   }
+
 }
 // ── POLLING ────────────────────────────────────────────────────────
 function startCloudPoll(){
