@@ -1021,12 +1021,7 @@ async function uploadImageToDrive(base64Data, filename){
 
   try{
 
-    const compressed =
-      await compressImage(
-        base64Data,
-        0.5,
-        600
-      );
+    const compressed = base64Data;
 
     const fname =
       filename ||
