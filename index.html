@@ -912,9 +912,22 @@ async function initJsonBin(){
 }
 
 // Start cloud sync when page loads
-if(USE_CLOUD){
-  window.addEventListener('load', ()=>setTimeout(initJsonBin, 800));
-}
+window.addEventListener('load', ()=>{
+  setTimeout(async()=>{
+    if(USE_CLOUD){
+      await initJsonBin();
+    } else {
+      // Config.js kanske inte laddats — försök igen efter 2s
+      setTimeout(async()=>{
+        // Re-evaluate USE_CLOUD
+        const cfg = window.JSONBIN_CONFIG||{};
+        if(cfg.apiKey && cfg.apiKey.length > 10){
+          await initJsonBin();
+        }
+      }, 2000);
+    }
+  }, 800);
+});
 
 // ── CLOUD LOAD ─────────────────────────────────────────────────────
 async function cloudLoad(){
@@ -1087,7 +1100,7 @@ function startCloudPoll(){
       const updated = await cloudLoad();
       if(updated) toast('🔄 Data uppdaterad',2000);
     }
-  }, 300000); // Poll every 5 minutes
+  }, 120000); // Poll every 2 minutes
 }
 
 // ── STATUS UI ──────────────────────────────────────────────────────
