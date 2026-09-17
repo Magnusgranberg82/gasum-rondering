@@ -2552,6 +2552,16 @@ async function lbSubmit(){
   // Always save base64 locally first so entry is never lost
   entry.images = [..._lbImgData];
   console.log("ENTRY IMAGES:", entry.images);
+  // Sätt PENDING-länk direkt så bilden alltid syns
+  if(entry.images.length){
+    entry.images = entry.images.map((img,i)=>{
+      if(img && !img.startsWith('http') && !img.startsWith('PENDING:')){
+        return 'PENDING:lb_'+entry.id+'_'+i+'.jpg';
+      }
+      return img;
+    });
+  }
+
   DB.logEntries.unshift(entry);
   storageSave();
   lbClearForm();
@@ -2562,27 +2572,36 @@ async function lbSubmit(){
   toast('✓ Inlägg sparat!');
   window.scrollTo({top:0,behavior:'smooth'});
 
-  // Background: try to replace base64 with Drive URLs
-  if(entry.images.length && USE_CLOUD && _cloudReady){
+  // Background: ladda upp till Drive och ersätt PENDING med riktig URL
+  if(_lbImgData.length && USE_CLOUD && _cloudReady){
+    const originalImages = [..._lbImgData];
     setTimeout(async()=>{
       try{
         let changed = false;
-        for(let i=0; i<entry.images.length; i++){
-          const img = entry.images[i];
-          if(img && !img.startsWith('http')){
-            const url = await uploadImageToDrive(img,'lb_'+entry.id+'_'+i+'.jpg');
-            console.log("UPLOAD URL:", url);
-            if(url){
-              const ei = DB.logEntries.findIndex(e=>e.id===entry.id);
-              if(ei>=0){ DB.logEntries[ei].images[i]=url; changed=true; }
+        for(let i=0; i<originalImages.length; i++){
+          const img = originalImages[i];
+          if(img && img.startsWith('data:')){
+            const fname = 'lb_'+entry.id+'_'+i+'.jpg';
+            const url = await uploadImageToDrive(img, fname);
+            const ei = DB.logEntries.findIndex(e=>e.id===entry.id);
+            if(ei>=0){
+              if(url && url.startsWith('http')){
+                DB.logEntries[ei].images[i] = url;
+                changed = true;
+                toast('☁️ Bild uppladdad till Drive', 2000);
+              } else {
+                // Behåll PENDING-länken — bilden finns i Drive men URL okänd
+                DB.logEntries[ei].images[i] = 'PENDING:'+fname;
+                changed = true;
+              }
             }
           }
         }
-        if(changed){ storageSave(); toast('☁️ Bild sparad till Drive',2000); }
+        if(changed){ storageSave(); renderLb(); }
       }catch(err){
         console.error('Bg image upload:',err);
       }
-    }, 2000);
+    }, 1000);
   }
 }
 
