@@ -1096,11 +1096,49 @@ async function uploadImageToDrive(base64Data, filename){
 function startCloudPoll(){
   if(_cloudPollTimer) clearInterval(_cloudPollTimer);
   _cloudPollTimer = setInterval(async()=>{
-    if(!_cloudSyncing && document.visibilityState==='visible'){
-      const updated = await cloudLoad();
-      if(updated) toast('🔄 Data uppdaterad',2000);
+    if(_cloudSyncing || document.visibilityState!=='visible') return;
+    try{
+      cloudStatusUI('syncing','Hämtar...');
+      const resp = await fetch(APPS_SCRIPT_URL+'?action=read');
+      if(!resp.ok) throw new Error('HTTP '+resp.status);
+      const result = await resp.json();
+      if(!result.ok || !result.data) { cloudStatusUI('ok','☁️ '+new Date().toLocaleTimeString('sv-SE')); return; }
+
+      const cloudData = result.data;
+      const cloudTs   = cloudData._savedAt ? new Date(cloudData._savedAt) : new Date(0);
+      const localTs   = DB._savedAt ? new Date(DB._savedAt) : new Date(0);
+
+      if(cloudTs > localTs){
+        // Molnet har nyare data — uppdatera
+        const localRaw = localStorage.getItem(SK);
+        let localEntries = [];
+        try{ localEntries = JSON.parse(localRaw||'{}').logEntries||[]; }catch{}
+
+        DB = cloudData;
+        if(!DB.workPermits) DB.workPermits=[];
+        if(!DB.logEntries)  DB.logEntries=[];
+        if(!DB.rounds)      DB.rounds=[];
+        if(!DB.sessions)    DB.sessions=[];
+        DB.facilities.forEach(f=>{ if(!f.type) f.type='biogas'; });
+
+        // Bevara lokala bilder
+        DB.logEntries = DB.logEntries.map(ce=>{
+          const le = localEntries.find(e=>e.id===ce.id);
+          if(!le) return ce;
+          return {...ce, images: le.images||ce.images||[]};
+        });
+
+        try{ localStorage.setItem(SK, JSON.stringify(DB)); }catch{}
+        cloudStatusUI('ok','☁️ '+new Date().toLocaleTimeString('sv-SE'));
+        toast('🔄 Data uppdaterad från molnet',2000);
+        if(CU) try{ renderHomeBadges(); }catch{}
+      } else {
+        cloudStatusUI('ok','☁️ '+new Date().toLocaleTimeString('sv-SE'));
+      }
+    }catch(e){
+      cloudStatusUI('warn','⚠ Offline');
     }
-  }, 120000); // Poll every 2 minutes
+  }, 120000); // Var 2:a minut
 }
 
 // ── STATUS UI ──────────────────────────────────────────────────────
