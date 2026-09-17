@@ -962,7 +962,7 @@ async function cloudLoad(){
         if(!localEntry) return cloudEntry;
         const cloudImgs = (cloudEntry.images||[]).filter(i=>i&&i.startsWith('http'));
         const localImgs = (localEntry.images||[]);
-        // Prioritet: Drive-URLs från molnet > lokala bilder
+        // Behåll lokala bilder (base64 eller PENDING) om moln saknar Drive-URL
         const merged = cloudImgs.length > 0 ? cloudImgs : localImgs;
         return {...cloudEntry, images: merged};
       });
@@ -995,7 +995,12 @@ async function cloudSave(){
     const slim = JSON.parse(JSON.stringify(DB));
     slim.logEntries = (slim.logEntries||[]).map(e=>({
       ...e,
-      images:(e.images||[]).filter(img=>typeof img==='string'&&img.startsWith('http'))
+      images:(e.images||[]).map(img=>{
+        if(!img) return null;
+        if(img.startsWith('http')) return img; // Drive URL — behåll
+        if(img.includes('||PENDING:')) return img.split('||')[1]; // Bara PENDING-länken till molnet
+        return null; // Ren base64 — strippa
+      }).filter(Boolean)
     }));
 
     // Skicka via hidden iframe form (kringgår CORS)
@@ -2467,16 +2472,23 @@ function renderLb(resetPage){
       <div class="lb-body" id="lbb-${e.id}">
         <div class="lb-text">${highlightText}</div>
         ${e.images?.length?`<div class="lb-imgs">${e.images.map((img,i)=>
-  img && img.includes('||PENDING:')
+  img && (img.includes('||PENDING:') || img.startsWith('PENDING:'))
     ? (()=>{
-        const [b64, pendingPart] = img.split('||');
+        const pendingPart = img.includes('||PENDING:') ? img.split('||')[1] : img;
+        const b64part     = img.includes('||PENDING:') ? img.split('||')[0] : null;
         const parts = pendingPart.replace('PENDING:','').split('|');
         const fname = parts[0];
         const link  = parts[1]||'https://drive.google.com/drive/folders/1p_R3WpPgXoTE56zIXMYXJghxC0--YBq8';
-        return `<div style="display:inline-block;position:relative">
-          <img class="lb-img" src="${b64}" onclick="openLightbox('${e.id}',${i})" loading="lazy" style="opacity:0.85">
-          <a href="${link}" target="_blank" style="position:absolute;bottom:3px;left:3px;right:3px;background:rgba(0,0,0,.65);color:white;font-size:9px;padding:2px 4px;border-radius:3px;text-decoration:none;text-align:center;display:block">📷 Drive</a>
-        </div>`;
+        if(b64part){
+          // Lokal enhet — visa thumbnail + Drive-länk
+          return `<div style="display:inline-block;position:relative;cursor:pointer" onclick="window.open('${link}','_blank')">
+            <img class="lb-img" src="${b64part}" loading="lazy" style="opacity:0.9">
+            <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.6);color:white;font-size:9px;padding:2px 4px;text-align:center">📷 Öppna i Drive</div>
+          </div>`;
+        } else {
+          // Annan enhet — bara Drive-länk
+          return `<a href="${link}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:var(--s2);border:1px solid var(--acc);border-radius:var(--rs);padding:8px 12px;font-size:12px;color:var(--acc);text-decoration:none;font-weight:600">📷 ${esc(fname)}<br><small style="font-weight:400;color:var(--mut)">Öppna i Drive</small></a>`;
+        }
       })()
     : img && img.startsWith('http')
       ? `<img class="lb-img" src="${img}" onclick="openLightbox('${e.id}',${i})" loading="lazy">`
