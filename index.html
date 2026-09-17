@@ -2471,17 +2471,31 @@ function renderLb(resetPage){
       </div>
       <div class="lb-body" id="lbb-${e.id}">
         <div class="lb-text">${highlightText}</div>
-        ${(e.imageLinks||[]).length?`<div style="margin:6px 0;display:flex;flex-wrap:wrap;gap:6px">${(e.imageLinks||[]).map((link,i)=>`<a href="${link}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;background:var(--s2);border:1px solid var(--acc);border-radius:var(--rs);padding:7px 11px;font-size:12px;color:var(--acc);text-decoration:none;font-weight:600">📷 Bild ${i+1} — Öppna i Drive</a>`).join('')}</div>`:''}
-        ${e.images?.length?`<div class="lb-imgs">${e.images.map((img,i)=>
-  img && img.startsWith('data:')
-    ? `<img class="lb-img" src="${img}" onclick="openLightbox('${e.id}',${i})" loading="lazy">`
-    : img && img.startsWith('http')
-      ? `<img class="lb-img" src="${img}" onclick="openLightbox('${e.id}',${i})" loading="lazy">`
-    : img && img.startsWith('http')
-      ? `<img class="lb-img" src="${img}" onclick="openLightbox('${e.id}',${i})" loading="lazy">`
-      : `<img class="lb-img" src="${img}" onclick="openLightbox('${e.id}',${i})" loading="lazy">`
-).join('')}</div>`:''}
-        <div style="display:flex;justify-content:flex-end;margin-top:8px">
+        ${(()=>{
+          const links = e.imageLinks||[];
+          const imgs  = e.images||[];
+          const count = Math.max(links.length, imgs.length);
+          if(!count) return '';
+          const driveFolder = 'https://drive.google.com/drive/folders/1p_R3WpPgXoTE56zIXMYXJghxC0--YBq8';
+          return '<div style="margin:6px 0;display:flex;flex-wrap:wrap;gap:6px">'
+            + Array.from({length:count},(_,i)=>{
+                const link = links[i]||driveFolder;
+                const img  = imgs[i]||'';
+                if(img.startsWith('data:')){
+                  // Lokal enhet — thumbnail med Drive-knapp
+                  return '<div style="display:inline-block;position:relative">'
+                    +'<img class="lb-img" src="'+img+'" onclick="openLightbox(\''+e.id+'\','+i+')" loading="lazy">'
+                    +'<a href="'+link+'" target="_blank" style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.6);color:white;font-size:9px;padding:2px 4px;text-align:center;text-decoration:none;display:block">📷 Drive</a>'
+                    +'</div>';
+                } else if(img.startsWith('http')){
+                  return '<img class="lb-img" src="'+img+'" onclick="openLightbox(\''+e.id+'\','+i+')" loading="lazy">';
+                } else {
+                  // Annan enhet eller gammal post — bara Drive-länk
+                  return '<a href="'+link+'" target="_blank" style="display:inline-flex;align-items:center;gap:5px;background:var(--s2);border:1px solid var(--acc);border-radius:var(--rs);padding:7px 11px;font-size:12px;color:var(--acc);text-decoration:none;font-weight:600">📷 Bild '+(i+1)+' — Öppna i Drive</a>';
+                }
+              }).join('')
+            +'</div>';
+        })()}        <div style="display:flex;justify-content:flex-end;margin-top:8px">
           ${e.userId===CU?.id||CU?.role==='admin'?`<button class="btn bd" onclick="deleteLbEntry('${e.id}')">🗑 Ta bort</button>`:''}
         </div>
       </div>
