@@ -2467,12 +2467,16 @@ function renderLb(resetPage){
       <div class="lb-body" id="lbb-${e.id}">
         <div class="lb-text">${highlightText}</div>
         ${e.images?.length?`<div class="lb-imgs">${e.images.map((img,i)=>
-  img && img.startsWith('PENDING:')
+  img && img.includes('||PENDING:')
     ? (()=>{
-        const parts = img.replace('PENDING:','').split('|');
+        const [b64, pendingPart] = img.split('||');
+        const parts = pendingPart.replace('PENDING:','').split('|');
         const fname = parts[0];
         const link  = parts[1]||'https://drive.google.com/drive/folders/1p_R3WpPgXoTE56zIXMYXJghxC0--YBq8';
-        return `<a href="${link}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:var(--s2);border:1px solid var(--brd);border-radius:var(--rs);padding:8px 12px;font-size:12px;color:var(--acc);text-decoration:none;font-weight:600">📷 ${esc(fname)} — öppna i Drive</a>`;
+        return `<div style="display:inline-block;position:relative">
+          <img class="lb-img" src="${b64}" onclick="openLightbox('${e.id}',${i})" loading="lazy" style="opacity:0.85">
+          <a href="${link}" target="_blank" style="position:absolute;bottom:3px;left:3px;right:3px;background:rgba(0,0,0,.65);color:white;font-size:9px;padding:2px 4px;border-radius:3px;text-decoration:none;text-align:center;display:block">📷 Drive</a>
+        </div>`;
       })()
     : img && img.startsWith('http')
       ? `<img class="lb-img" src="${img}" onclick="openLightbox('${e.id}',${i})" loading="lazy">`
@@ -2554,17 +2558,16 @@ async function lbSubmit(){
     authorName:CU?.name||'Okänd',
   };
 
-  // Always save base64 locally first so entry is never lost
-  entry.images = [..._lbImgData];
-  console.log("ENTRY IMAGES:", entry.images);
-  // Spara länk till Drive bilder-mappen direkt — ingen API-lookup
-  if(entry.images.length){
+  // Spara kopia av bilder INNAN lbClearForm rensar _lbImgData
+  const capturedImages = [..._lbImgData];
+
+  // Spara base64 lokalt + PENDING-länk för Drive
+  if(capturedImages.length){
     const driveLink = 'https://drive.google.com/drive/folders/1p_R3WpPgXoTE56zIXMYXJghxC0--YBq8';
-    entry.images = entry.images.map((img,i)=>{
-      if(img && !img.startsWith('http')){
-        return 'PENDING:lb_'+entry.id+'_'+i+'.jpg|'+driveLink;
-      }
-      return img;
+    entry.images = capturedImages.map((img,i)=>{
+      // Spara som base64 lokalt — thumbnail visas direkt
+      // PENDING-info läggs till som suffix för att andra enheter kan klicka sig till Drive
+      return img+'||PENDING:lb_'+entry.id+'_'+i+'.jpg|'+driveLink;
     });
   }
 
@@ -2579,11 +2582,10 @@ async function lbSubmit(){
   window.scrollTo({top:0,behavior:'smooth'});
 
   // Background: ladda upp till Drive (fire-and-forget)
-  if(_lbImgData.length && USE_CLOUD && _cloudReady){
-    const originalImages = [..._lbImgData];
+  if(capturedImages.length && USE_CLOUD && _cloudReady){
     setTimeout(async()=>{
-      for(let i=0; i<originalImages.length; i++){
-        const img = originalImages[i];
+      for(let i=0; i<capturedImages.length; i++){
+        const img = capturedImages[i];
         if(img && img.startsWith('data:')){
           const fname = 'lb_'+entry.id+'_'+i+'.jpg';
           await sendViaIframe(APPS_SCRIPT_URL, JSON.stringify({
