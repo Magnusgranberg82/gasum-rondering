@@ -1083,9 +1083,7 @@ async function uploadImageToDrive(base64Data, filename){
 function startCloudPoll(){
   if(_cloudPollTimer) clearInterval(_cloudPollTimer);
   _cloudPollTimer = setInterval(async()=>{
-    // Skip poll if we just saved locally (within last 10 seconds)
-    const justSaved = window._lastLocalSave && (Date.now()-window._lastLocalSave < 30000);
-    if(!_cloudSyncing && !justSaved && document.visibilityState==='visible'){
+    if(!_cloudSyncing && document.visibilityState==='visible'){
       const updated = await cloudLoad();
       if(updated) toast('🔄 Data uppdaterad',2000);
     }
@@ -1686,7 +1684,9 @@ function initAppShell(){
     if(hright && !document.getElementById('gdrive-status')){
       const statusDiv = document.createElement('div');
       statusDiv.id = 'gdrive-status';
-      statusDiv.style.cssText = 'font-size:10px;color:rgba(255,255,255,.5);margin-right:8px;white-space:nowrap';
+      statusDiv.style.cssText = 'font-size:10px;color:rgba(255,255,255,.5);margin-right:8px;white-space:nowrap;cursor:pointer';
+      statusDiv.title = 'Klicka för att hämta nu';
+      statusDiv.onclick = ()=>cloudLoad().then(u=>u&&toast('🔄 Uppdaterad!',2000));
       statusDiv.innerHTML = '☁️ ...';
       hright.insertBefore(statusDiv, hright.firstChild);
     }
