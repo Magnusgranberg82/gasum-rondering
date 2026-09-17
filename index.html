@@ -1132,6 +1132,18 @@ function startCloudPoll(){
         cloudStatusUI('ok','☁️ '+new Date().toLocaleTimeString('sv-SE'));
         toast('🔄 Data uppdaterad från molnet',2000);
         if(CU) try{ renderHomeBadges(); }catch{}
+        // Rendera om aktiv vy direkt
+        try{
+          const lbVisible = document.getElementById('pg-lb-list') &&
+            !document.getElementById('pg-lb-list').classList.contains('off');
+          const dashVisible = document.getElementById('pg-dash') &&
+            !document.getElementById('pg-dash').classList.contains('off');
+          const histVisible = document.getElementById('pg-hist') &&
+            !document.getElementById('pg-hist').classList.contains('off');
+          if(lbVisible)   renderLb();
+          if(dashVisible) renderDash();
+          if(histVisible) try{ rHist(); }catch{}
+        }catch(re){ console.log('Re-render:',re); }
       } else {
         cloudStatusUI('ok','☁️ '+new Date().toLocaleTimeString('sv-SE'));
       }
