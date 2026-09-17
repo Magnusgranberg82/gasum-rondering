@@ -960,11 +960,15 @@ async function cloudLoad(){
       DB.logEntries = DB.logEntries.map(cloudEntry=>{
         const localEntry = localEntries.find(e=>e.id===cloudEntry.id);
         if(!localEntry) return cloudEntry;
-        const cloudImgs = (cloudEntry.images||[]).filter(i=>i&&i.startsWith('http'));
+        // Behåll lokala base64-bilder + cloud imageLinks
         const localImgs = (localEntry.images||[]);
-        // Behåll lokala bilder (base64 eller PENDING) om moln saknar Drive-URL
-        const merged = cloudImgs.length > 0 ? cloudImgs : localImgs;
-        return {...cloudEntry, images: merged};
+        const cloudLinks = (cloudEntry.imageLinks||[]);
+        const localLinks = (localEntry.imageLinks||[]);
+        return {
+          ...cloudEntry,
+          images: localImgs,  // base64 från lokal enhet
+          imageLinks: cloudLinks.length > 0 ? cloudLinks : localLinks,
+        };
       });
 
       try{ localStorage.setItem(SK, JSON.stringify(DB)); }catch{}
@@ -995,12 +999,8 @@ async function cloudSave(){
     const slim = JSON.parse(JSON.stringify(DB));
     slim.logEntries = (slim.logEntries||[]).map(e=>({
       ...e,
-      images:(e.images||[]).map(img=>{
-        if(!img) return null;
-        if(img.startsWith('http')) return img; // Drive URL — behåll
-        if(img.includes('||PENDING:')) return img.split('||')[1]; // Bara PENDING-länken till molnet
-        return null; // Ren base64 — strippa
-      }).filter(Boolean)
+      images:[],  // base64 stripas alltid — lokalt only
+      imageLinks:(e.imageLinks||[])  // Drive-länkar behålls
     }));
 
     // Skicka via hidden iframe form (kringgår CORS)
@@ -2471,25 +2471,12 @@ function renderLb(resetPage){
       </div>
       <div class="lb-body" id="lbb-${e.id}">
         <div class="lb-text">${highlightText}</div>
+        ${(e.imageLinks||[]).length?`<div style="margin:6px 0;display:flex;flex-wrap:wrap;gap:6px">${(e.imageLinks||[]).map((link,i)=>`<a href="${link}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;background:var(--s2);border:1px solid var(--acc);border-radius:var(--rs);padding:7px 11px;font-size:12px;color:var(--acc);text-decoration:none;font-weight:600">📷 Bild ${i+1} — Öppna i Drive</a>`).join('')}</div>`:''}
         ${e.images?.length?`<div class="lb-imgs">${e.images.map((img,i)=>
-  img && (img.includes('||PENDING:') || img.startsWith('PENDING:'))
-    ? (()=>{
-        const pendingPart = img.includes('||PENDING:') ? img.split('||')[1] : img;
-        const b64part     = img.includes('||PENDING:') ? img.split('||')[0] : null;
-        const parts = pendingPart.replace('PENDING:','').split('|');
-        const fname = parts[0];
-        const link  = parts[1]||'https://drive.google.com/drive/folders/1p_R3WpPgXoTE56zIXMYXJghxC0--YBq8';
-        if(b64part){
-          // Lokal enhet — visa thumbnail + Drive-länk
-          return `<div style="display:inline-block;position:relative;cursor:pointer" onclick="window.open('${link}','_blank')">
-            <img class="lb-img" src="${b64part}" loading="lazy" style="opacity:0.9">
-            <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.6);color:white;font-size:9px;padding:2px 4px;text-align:center">📷 Öppna i Drive</div>
-          </div>`;
-        } else {
-          // Annan enhet — bara Drive-länk
-          return `<a href="${link}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:var(--s2);border:1px solid var(--acc);border-radius:var(--rs);padding:8px 12px;font-size:12px;color:var(--acc);text-decoration:none;font-weight:600">📷 ${esc(fname)}<br><small style="font-weight:400;color:var(--mut)">Öppna i Drive</small></a>`;
-        }
-      })()
+  img && img.startsWith('data:')
+    ? `<img class="lb-img" src="${img}" onclick="openLightbox('${e.id}',${i})" loading="lazy">`
+    : img && img.startsWith('http')
+      ? `<img class="lb-img" src="${img}" onclick="openLightbox('${e.id}',${i})" loading="lazy">`
     : img && img.startsWith('http')
       ? `<img class="lb-img" src="${img}" onclick="openLightbox('${e.id}',${i})" loading="lazy">`
       : `<img class="lb-img" src="${img}" onclick="openLightbox('${e.id}',${i})" loading="lazy">`
@@ -2557,6 +2544,8 @@ async function lbSubmit(){
   const text=document.getElementById('lb-text').value.trim();
   if(!text){toast('Ange en text för inlägget');return;}
   if(!_lbFacId){toast('Välj en anläggning');return;}
+  const capturedImages = [..._lbImgData]; // Spara INNAN lbClearForm rensar
+
   const entry={
     id:uid(),
     facilityId:_lbFacId,
@@ -2564,24 +2553,14 @@ async function lbSubmit(){
     category:document.getElementById('lb-cat').value,
     title:document.getElementById('lb-title').value.trim(),
     text,
-    images:[],  // filled after upload below
+    images:capturedImages,  // base64 — visas lokalt, stripas vid cloudSave
+    imageLinks: capturedImages.map((_,i)=>   // Drive-länk — synkas till alla enheter
+      'https://drive.google.com/drive/folders/1p_R3WpPgXoTE56zIXMYXJghxC0--YBq8'
+    ),
     ts:new Date().toISOString(),
     userId:CU?.id,
     authorName:CU?.name||'Okänd',
   };
-
-  // Spara kopia av bilder INNAN lbClearForm rensar _lbImgData
-  const capturedImages = [..._lbImgData];
-
-  // Spara base64 lokalt + PENDING-länk för Drive
-  if(capturedImages.length){
-    const driveLink = 'https://drive.google.com/drive/folders/1p_R3WpPgXoTE56zIXMYXJghxC0--YBq8';
-    entry.images = capturedImages.map((img,i)=>{
-      // Spara som base64 lokalt — thumbnail visas direkt
-      // PENDING-info läggs till som suffix för att andra enheter kan klicka sig till Drive
-      return img+'||PENDING:lb_'+entry.id+'_'+i+'.jpg|'+driveLink;
-    });
-  }
 
   DB.logEntries.unshift(entry);
   storageSave();
