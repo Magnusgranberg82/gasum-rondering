@@ -1089,7 +1089,7 @@ function startCloudPoll(){
       const updated = await cloudLoad();
       if(updated) toast('🔄 Data uppdaterad',2000);
     }
-  }, 20000);
+  }, 300000); // Poll every 5 minutes
 }
 
 // ── STATUS UI ──────────────────────────────────────────────────────
